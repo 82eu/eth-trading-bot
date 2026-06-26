@@ -208,12 +208,16 @@ def get_balance():
                 for item in result:
                     for d in item.get("details", []):
                         if d.get("ccy") == "USDT":
-                            available = float(d.get("availBal", 0))
-                            total = float(d.get("bal", 0))
-                            used = float(d.get("frozenBal", 0))
                             eq = d.get("eq")
+                            avail = d.get("availEq") or d.get("availBal")
+                            frozen = d.get("frozenBal", "0")
                             if eq:
                                 equity = float(eq)
+                                total = equity
+                            if avail:
+                                available = float(avail)
+                            if frozen:
+                                used = float(frozen)
                             break
             data = {
                 "total": total,

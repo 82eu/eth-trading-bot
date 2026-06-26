@@ -27,22 +27,28 @@ class OKXClient:
         self.simulate = SIMULATE
 
     def get_balance(self):
-        """获取账户余额"""
+        """获取合约账户余额/权益"""
         try:
-            result = self.account.get_balance()
+            result = self.account.get_account_balance()
             if result.get("code") == "0":
-                data = result["data"]
+                data = result.get("data", [])
                 for item in data:
                     details = item.get("details", [])
                     for d in details:
-                        if float(d.get("availBal", 0)) > 0:
-                            logger.info(f"余额: {d.get('ccy')} 可用: {d.get('availBal')} 余额: {d.get('bal')}")
+                        if d.get("ccy") == "USDT":
+                            logger.info(f"合约账户: USDT 权益: {d.get('eq')} 可用: {d.get('availEq')}")
                 return data
             else:
                 logger.error(f"获取余额失败: {result}")
                 return None
         except Exception as e:
             logger.error(f"获取余额异常: {e}")
+            try:
+                result = self.account.get_balance()
+                if result.get("code") == "0":
+                    return result.get("data", [])
+            except Exception as e2:
+                logger.error(f"备用余额查询也失败: {e2}")
             return None
 
     def get_ticker(self, symbol):
