@@ -62,17 +62,17 @@ class OKXClient:
             message += body if isinstance(body, str) else str(body)
 
         mac = hmac.new(
-            bytes(self.account.apisecret, encoding="utf8"),
+            bytes(API_SECRET, encoding="utf8"),
             bytes(message, encoding="utf-8"),
             digestmod=hashlib.sha256,
         )
         sign = base64.b64encode(mac.digest()).decode()
 
         return {
-            "OK-ACCESS-KEY": self.account.apikey,
+            "OK-ACCESS-KEY": API_KEY,
             "OK-ACCESS-SIGN": sign,
             "OK-ACCESS-TIMESTAMP": timestamp,
-            "OK-ACCESS-PASSPHRASE": self.account.passphrase,
+            "OK-ACCESS-PASSPHRASE": PASSPHRASE,
             "Content-Type": "application/json",
         }
 

@@ -14,14 +14,6 @@ from ema_strategy import EMAStrategy
 class AutoTrader:
     """自动交易引擎"""
 
-    TF_MAP = {
-        "5m": "5m",
-        "15m": "15m",
-        "30m": "30m",
-        "1h": "1H",
-        "4h": "4H",
-    }
-
     def __init__(self, okx_client, symbol="ETH-USDT-SWAP"):
         self.client = okx_client
         self.symbol = symbol
@@ -116,16 +108,8 @@ class AutoTrader:
 
     def _get_candles(self, timeframe):
         """获取K线"""
-        bar_map = {
-            "5m": "5m",
-            "15m": "15m",
-            "30m": "30m",
-            "1h": "1H",
-            "4h": "4H",
-        }
-        bar = bar_map.get(timeframe, "1H")
         try:
-            result = self.client.get_candles(self.symbol, bar=bar, limit=300)
+            result = self.client.get_candles(self.symbol, timeframe, limit=300)
             if result and isinstance(result, list):
                 return result
         except Exception as e:
