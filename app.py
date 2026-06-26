@@ -643,6 +643,8 @@ def auto_config():
         config["tp_points"] = float(data["tp_points"])
     if "sl_points" in data:
         config["sl_points"] = float(data["sl_points"])
+    if "leverage" in data:
+        config["leverage"] = int(data["leverage"])
 
     if at:
         at.set_config(**config)

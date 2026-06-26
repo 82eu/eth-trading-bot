@@ -50,15 +50,26 @@ class OKXClient:
             return None
 
     def _get_auth_headers(self, method, path, body=""):
-        """生成OKX API认证头"""
+        """
+        生成OKX API认证头
+        GET请求: body 应该是 query string (如 "ccy=USDT")，会拼到 path 后面
+        POST请求: body 是 JSON 字符串
+        """
         import hmac
         import hashlib
         import base64
         from datetime import datetime, timezone
 
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-        message = timestamp + method.upper() + path
-        if body and method.upper() in ["POST", "PUT"]:
+
+        method_upper = method.upper()
+        if method_upper == "GET" and body:
+            sign_path = path + "?" + body
+        else:
+            sign_path = path
+
+        message = timestamp + method_upper + sign_path
+        if body and method_upper in ["POST", "PUT", "DELETE"]:
             message += body if isinstance(body, str) else str(body)
 
         mac = hmac.new(
@@ -147,12 +158,13 @@ class OKXClient:
             logger.error(f"获取K线异常: {e}")
             return None
 
-    def usdt_to_size(self, symbol, usdt_amount, price=None):
+    def usdt_to_size(self, symbol, usdt_amount, price=None, leverage=None):
         """
         将USDT金额转换为合约张数
         :param symbol: 交易对
         :param usdt_amount: USDT金额
         :param price: 当前价格（不传则自动获取）
+        :param leverage: 杠杆倍数（不传用默认）
         :return: 张数（保留小数）
         """
         if price is None:
@@ -161,12 +173,10 @@ class OKXClient:
                 return None
             price = ticker["last"]
 
-        # U本位合约: 张数 = USDT金额 / 价格 * 杠杆
-        # 注意: OKX合约面值通常是1张 = 1币 (ETH合约 1张=0.01ETH)
-        # 简化计算: size = usdt_amount / price * leverage
-        size = (usdt_amount * LEVERAGE) / price
+        lev = leverage if leverage else LEVERAGE
 
-        # 根据交易对调整小数位
+        size = (usdt_amount * lev) / price
+
         if "BTC" in symbol:
             size = round(size, 3)
         elif "ETH" in symbol:
@@ -174,10 +184,10 @@ class OKXClient:
         else:
             size = round(size, 2)
 
-        logger.info(f"换算: {usdt_amount} USDT @ {price} = {size} 张 (杠杆: {LEVERAGE}x)")
+        logger.info(f"换算: {usdt_amount} USDT @ {price} = {size} 张 (杠杆: {lev}x)")
         return size
 
-    def place_order_usdt(self, symbol, side, usdt_amount, order_type="market", price=None, pos_side=None, stop_loss=None, take_profit=None):
+    def place_order_usdt(self, symbol, side, usdt_amount, order_type="market", price=None, pos_side=None, stop_loss=None, take_profit=None, leverage=None):
         """
         用USDT金额下单
         :param symbol: 交易对
@@ -188,6 +198,7 @@ class OKXClient:
         :param pos_side: long/short (默认根据side推断)
         :param stop_loss: 止损价格
         :param take_profit: 止盈价格
+        :param leverage: 杠杆倍数（不传用默认）
         """
         ticker = self.get_ticker(symbol)
         if not ticker:
@@ -195,20 +206,19 @@ class OKXClient:
             return None
 
         current_price = ticker["last"]
-        size = self.usdt_to_size(symbol, usdt_amount, current_price)
+        lev = leverage if leverage else LEVERAGE
+        size = self.usdt_to_size(symbol, usdt_amount, current_price, lev)
 
         if size is None or size <= 0:
             logger.error(f"计算张数失败: {size}")
             return None
 
-        # 自动推断持仓方向
         if pos_side is None:
             pos_side = "long" if side == "buy" else "short"
 
-        logger.info(f"下单: {side} {usdt_amount}U = {size}张 @ {current_price} ({pos_side})")
-        result = self.place_order(symbol, side, size, order_type, price, pos_side)
+        logger.info(f"下单: {side} {usdt_amount}U = {size}张 @ {current_price} ({pos_side}, {lev}x)")
+        result = self.place_order(symbol, side, size, order_type, price, pos_side, lev)
 
-        # 下单成功后设置止盈止损
         if result and (stop_loss or take_profit):
             try:
                 self.set_stop_take_profit(symbol, pos_side, stop_loss, take_profit, current_price)
@@ -217,7 +227,7 @@ class OKXClient:
 
         return result
 
-    def place_order(self, symbol, side, size, order_type="market", price=None, pos_side="long"):
+    def place_order(self, symbol, side, size, order_type="market", price=None, pos_side="long", leverage=None):
         """
         下单
         :param symbol: 交易对
@@ -226,19 +236,15 @@ class OKXClient:
         :param order_type: market/limit
         :param price: 限价单价格
         :param pos_side: long/short
+        :param leverage: 杠杆倍数
         """
         try:
             inst_id = symbol if "-SWAP" in symbol else f"{symbol}-SWAP"
             td_mode = "cross"
+            lev = leverage if leverage else LEVERAGE
 
-            # 设置杠杆
             try:
-                self.account.set_leverage(
-                    instId=inst_id,
-                    lever=str(LEVERAGE),
-                    mgnMode="cross",
-                    posSide=pos_side
-                )
+                self.set_leverage(symbol, lev, pos_side)
             except Exception as e:
                 logger.debug(f"设置杠杆跳过（可能已设置）: {e}")
 

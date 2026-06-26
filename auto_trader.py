@@ -29,6 +29,7 @@ class AutoTrader:
             "num_entries": 2,
             "tp_points": 50,
             "sl_points": 30,
+            "leverage": 10,
         }
 
         self.positions = {}
@@ -197,7 +198,8 @@ class AutoTrader:
                 self.symbol, side, open_amount,
                 pos_side=direction,
                 stop_loss=sl_price,
-                take_profit=tp_price
+                take_profit=tp_price,
+                leverage=self.config["leverage"],
             )
 
             if order_id:
@@ -292,7 +294,8 @@ class AutoTrader:
                 self.symbol, side, open_amount,
                 pos_side=direction,
                 stop_loss=sl_price,
-                take_profit=tp_price
+                take_profit=tp_price,
+                leverage=self.config["leverage"],
             )
 
             if order_id:
