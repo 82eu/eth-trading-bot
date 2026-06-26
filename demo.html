@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OKX 量化交易仪表盘 - ETH合约</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1419;
+            color: #e7e9ea;
+            min-height: 100vh;
+        }
+        .header {
+            background: #1a1f2e;
+            padding: 16px 24px;
+            border-bottom: 1px solid #2d3748;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .header h1 {
+            font-size: 20px;
+            background: linear-gradient(135deg, #627eea, #8b5cf6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .symbol-selector {
+            display: flex;
+            gap: 6px;
+        }
+        .symbol-btn {
+            padding: 4px 12px;
+            border-radius: 6px;
+            background: #2d3748;
+            border: none;
+            color: #718096;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .symbol-btn.active {
+            background: linear-gradient(135deg, #627eea, #8b5cf6);
+            color: white;
+        }
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .leverage-badge {
+            padding: 4px 10px;
+            background: rgba(139, 92, 246, 0.2);
+            color: #a78bfa;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            background: rgba(34, 197, 94, 0.15);
+            color: #22c55e;
+            font-size: 13px;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #22c55e;
+            animation: pulse 2s infinite;
+        }
+        .status-dot.stopped { background: #ef4444; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .demo-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            background: rgba(245, 158, 11, 0.2);
+            color: #f59e0b;
+            border-radius: 4px;
+            font-size: 11px;
+            margin-left: 8px;
+            font-weight: 600;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: #1a1f2e;
+            border: 1px solid #2d3748;
+            border-radius: 12px;
+            padding: 14px 18px;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+        .stat-card:hover {
+            transform: translateY(-2px);
+            border-color: #627eea;
+        }
+        .stat-card .label {
+            font-size: 12px;
+            color: #718096;
+            margin-bottom: 4px;
+        }
+        .stat-card .value {
+            font-size: 22px;
+            font-weight: 600;
+        }
+        .stat-card .value.positive { color: #22c55e; }
+        .stat-card .value.negative { color: #ef4444; }
+        .stat-card .sub {
+            font-size: 11px;
+            color: #718096;
+            margin-top: 2px;
+        }
+        .main-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        @media (max-width: 1024px) {
+            .main-grid { grid-template-columns: 1fr; }
+        }
+        .chart-container {
+            background: #1a1f2e;
+            border: 1px solid #2d3748;
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .chart-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .chart-title .signal-badge {
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .signal-badge.buy { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+        .signal-badge.sell { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+        .signal-badge.hold { background: rgba(113, 128, 150, 0.2); color: #718096; }
+        canvas { width: 100% !important; max-height: 380px; }
+        .side-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .panel-card {
+            background: #1a1f2e;
+            border: 1px solid #2d3748;
+            border-radius: 12px;
+            padding: 18px;
+        }
+        .panel-title {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .position-info {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .position-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+        }
+        .position-row .key { color: #718096; }
+        .position-row .val { font-weight: 500; }
+        .position-row .val.long { color: #22c55e; }
+        .position-row .val.short { color: #ef4444; }
+        .pnl-box {
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            border-radius: 8px;
+            padding: 10px 14px;
+            text-align: center;
+            margin-top: 10px;
+        }
+        .pnl-box.negative {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: rgba(239, 68, 68, 0.3);
+        }
+        .pnl-box .pnl-label {
+            font-size: 12px;
+            color: #718096;
+            margin-bottom: 4px;
+        }
+        .pnl-box .pnl-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #22c55e;
+        }
+        .pnl-box.negative .pnl-value { color: #ef4444; }
+
+        .btn-group {
+            display: flex;
+            gap: 8px;
+            margin-top: 14px;
+        }
+        .btn {
+            flex: 1;
+            padding: 9px 14px;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn:active { transform: scale(0.98); }
+        .btn-primary {
+            background: linear-gradient(135deg, #627eea, #8b5cf6);
+            color: white;
+        }
+        .btn-primary:hover { opacity: 0.9; }
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+        .btn-danger:hover { background: #dc2626; }
+
+        .quick-trade {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .amount-input-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+        .amount-input-wrap label {
+            font-size: 12px;
+            color: #718096;
+            min-width: 50px;
+        }
+        .amount-input-wrap input {
+            flex: 1;
+            background: #0f1419;
+            border: 1px solid #2d3748;
+            border-radius: 6px;
+            padding: 8px 10px;
+            color: #e7e9ea;
+            font-size: 14px;
+            text-align: right;
+        }
+        .amount-input-wrap input:focus {
+            outline: none;
+            border-color: #627eea;
+        }
+        .amount-input-wrap .unit {
+            color: #718096;
+            font-size: 12px;
+            min-width: 20px;
+        }
+        .quick-btns {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 6px;
+        }
+        .quick-amt-btn {
+            flex: 1;
+            padding: 6px;
+            background: #2d3748;
+            border: none;
+            border-radius: 6px;
+            color: #a0aec0;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .quick-amt-btn:hover {
+            background: #4a5568;
+            color: #e7e9ea;
+        }
+        .trade-buttons {
+            display: flex;
+            gap: 8px;
+        }
+        .btn-long {
+            flex: 1;
+            padding: 12px;
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-long:hover { opacity: 0.9; transform: translateY(-1px); }
+        .btn-short {
+            flex: 1;
+            padding: 12px;
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-short:hover { opacity: 0.9; transform: translateY(-1px); }
+        .size-info {
+            text-align: center;
+            font-size: 11px;
+            color: #718096;
+            margin-top: 6px;
+        }
+        .size-info span {
+            color: #a78bfa;
+            font-weight: 600;
+        }
+
+        .strategy-params {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .ma-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            background: #0f1419;
+            border-radius: 6px;
+        }
+        .ma-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+        }
+        .ma-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+        .ma-dot.fast { background: #00d4ff; }
+        .ma-dot.slow { background: #f59e0b; }
+
+        .trade-list {
+            max-height: 280px;
+            overflow-y: auto;
+        }
+        .trade-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #2d3748;
+            font-size: 12px;
+        }
+        .trade-item:last-child { border-bottom: none; }
+        .trade-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .trade-side {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 700;
+            min-width: 36px;
+            text-align: center;
+        }
+        .trade-side.long { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+        .trade-side.short { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+        .trade-info .trade-reason {
+            color: #e7e9ea;
+            margin-bottom: 2px;
+        }
+        .trade-info .trade-time {
+            color: #718096;
+            font-size: 11px;
+        }
+        .trade-pnl.positive { color: #22c55e; font-weight: 600; }
+        .trade-pnl.negative { color: #ef4444; font-weight: 600; }
+
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 14px 20px;
+            border-radius: 10px;
+            color: white;
+            font-size: 14px;
+            opacity: 0;
+            transform: translateY(-20px);
+            transition: all 0.3s;
+            z-index: 9999;
+            max-width: 320px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .toast.success { background: #10b981; }
+        .toast.info { background: #6366f1; }
+        .toast.error { background: #ef4444; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">
+            <h1>📊 ETH 合约交易 <span class="demo-badge">演示</span></h1>
+            <div class="symbol-selector">
+                <button class="symbol-btn active" onclick="switchSymbol('ETH')">ETH</button>
+                <button class="symbol-btn" onclick="switchSymbol('BTC')">BTC</button>
+            </div>
+        </div>
+        <div class="header-right">
+            <span class="leverage-badge">10x 杠杆</span>
+            <div class="status-badge">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">运行中</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- 统计卡片 -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="label">账户权益 (USDT)</div>
+                <div class="value" id="totalEquity">$5,128.50</div>
+                <div class="sub">初始: $5,000.00</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">可用余额</div>
+                <div class="value" id="available">$4,200.00</div>
+                <div class="sub">已用: $800.00</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">ETH 价格</div>
+                <div class="value" id="currentPrice">$3,520.50</div>
+                <div class="sub" id="priceChange">+1.25% (24h)</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">持仓盈亏</div>
+                <div class="value positive" id="positionPnl">+$28.40</div>
+                <div class="sub" id="positionPnlPct">+2.84%</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">24h 盈亏</div>
+                <div class="value positive" id="pnl24h">+$128.50</div>
+                <div class="sub">胜率: 60%</div>
+            </div>
+        </div>
+
+        <!-- 主内容区 -->
+        <div class="main-grid">
+            <!-- K线图 -->
+            <div class="chart-container">
+                <div class="chart-title">
+                    <span id="chartSymbol">ETH-USDT-SWAP · 1小时</span>
+                    <span class="signal-badge buy" id="signalBadge">BUY</span>
+                </div>
+                <canvas id="candleChart"></canvas>
+            </div>
+
+            <!-- 侧边栏 -->
+            <div class="side-panel">
+                <!-- 快速下单 -->
+                <div class="panel-card">
+                    <div class="panel-title">⚡ 快速开单</div>
+                    <div class="quick-trade">
+                        <div class="quick-btns">
+                            <button class="quick-amt-btn" onclick="setAmount(50)">50U</button>
+                            <button class="quick-amt-btn" onclick="setAmount(100)">100U</button>
+                            <button class="quick-amt-btn" onclick="setAmount(200)">200U</button>
+                            <button class="quick-amt-btn" onclick="setAmount(500)">500U</button>
+                        </div>
+                        <div class="amount-input-wrap">
+                            <label>金额</label>
+                            <input type="number" id="orderAmount" value="100" min="10" step="10">
+                            <span class="unit">U</span>
+                        </div>
+                        <div class="size-info">
+                            约 <span id="calcSize">0.284</span> 张 (ETH) · 保证金 <span id="calcMargin">100</span> U
+                        </div>
+                        <div class="trade-buttons">
+                            <button class="btn-long" onclick="openPosition('long')">开多 / 平空</button>
+                            <button class="btn-short" onclick="openPosition('short')">开空 / 平多</button>
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn-danger" onclick="closeAll()">一键全平</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 持仓信息 -->
+                <div class="panel-card">
+                    <div class="panel-title">💼 当前持仓</div>
+                    <div class="position-info">
+                        <div class="position-row">
+                            <span class="key">方向</span>
+                            <span class="val long" id="posSide">做多</span>
+                        </div>
+                        <div class="position-row">
+                            <span class="key">保证金</span>
+                            <span class="val" id="posMargin">100 USDT</span>
+                        </div>
+                        <div class="position-row">
+                            <span class="key">开仓价格</span>
+                            <span class="val" id="posEntry">$3,450.00</span>
+                        </div>
+                        <div class="position-row">
+                            <span class="key">持仓数量</span>
+                            <span class="val" id="posSize">0.290 张</span>
+                        </div>
+                        <div class="pnl-box" id="pnlBox">
+                            <div class="pnl-label">未实现盈亏</div>
+                            <div class="pnl-value">+$28.40 (2.84%)</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 策略参数 -->
+                <div class="panel-card">
+                    <div class="panel-title">📈 均线策略</div>
+                    <div class="strategy-params">
+                        <div class="ma-row">
+                            <div class="ma-label">
+                                <div class="ma-dot fast"></div>
+                                <span>MA10 (快线)</span>
+                            </div>
+                            <span id="maFast" style="color: #00d4ff; font-weight: 600;">$3,510.20</span>
+                        </div>
+                        <div class="ma-row">
+                            <div class="ma-label">
+                                <div class="ma-dot slow"></div>
+                                <span>MA50 (慢线)</span>
+                            </div>
+                            <span id="maSlow" style="color: #f59e0b; font-weight: 600;">$3,485.60</span>
+                        </div>
+                        <div class="ma-row">
+                            <div class="ma-label">⏱ 周期</div>
+                            <span>1小时</span>
+                        </div>
+                        <div class="ma-row">
+                            <div class="ma-label">💵 单笔</div>
+                            <span>100 USDT</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 交易历史 -->
+        <div class="panel-card">
+            <div class="panel-title">📋 交易历史</div>
+            <div class="trade-list" id="tradeList">
+                <div class="trade-item">
+                    <div class="trade-left">
+                        <span class="trade-side long">多</span>
+                        <div class="trade-info">
+                            <div class="trade-reason">金叉做多 · 100U</div>
+                            <div class="trade-time">2024-01-17 08:00 · @ $3,520</div>
+                        </div>
+                    </div>
+                    <div class="trade-pnl positive">进行中</div>
+                </div>
+                <div class="trade-item">
+                    <div class="trade-left">
+                        <span class="trade-side short">空</span>
+                        <div class="trade-info">
+                            <div class="trade-reason">死叉做空 · 100U</div>
+                            <div class="trade-time">2024-01-16 09:00 · @ $3,420</div>
+                        </div>
+                    </div>
+                    <div class="trade-pnl positive">+$8.50</div>
+                </div>
+                <div class="trade-item">
+                    <div class="trade-left">
+                        <span class="trade-side long">多</span>
+                        <div class="trade-info">
+                            <div class="trade-reason">金叉做多 · 100U</div>
+                            <div class="trade-time">2024-01-15 10:00 · @ $3,350</div>
+                        </div>
+                    </div>
+                    <div class="trade-pnl positive">+$12.30</div>
+                </div>
+                <div class="trade-item">
+                    <div class="trade-left">
+                        <span class="trade-side short">空</span>
+                        <div class="trade-info">
+                            <div class="trade-reason">死叉做空 · 100U</div>
+                            <div class="trade-time">2024-01-14 15:00 · @ $3,380</div>
+                        </div>
+                    </div>
+                    <div class="trade-pnl negative">-$5.20</div>
+                </div>
+                <div class="trade-item">
+                    <div class="trade-left">
+                        <span class="trade-side long">多</span>
+                        <div class="trade-info">
+                            <div class="trade-reason">金叉做多 · 100U</div>
+                            <div class="trade-time">2024-01-14 02:00 · @ $3,320</div>
+                        </div>
+                    </div>
+                    <div class="trade-pnl positive">+$15.80</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        let candleChart = null;
+        let isRunning = true;
+        let currentSymbol = 'ETH';
+        let currentPrice = 3520.50;
+        let entryPrice = 3450;
+        let positionSide = 'long';
+        let hasPosition = true;
+        let leverage = 10;
+
+        const symbolConfig = {
+            ETH: { base: 3500, name: 'ETH-USDT-SWAP', decimals: 2, sizeDecimals: 3 },
+            BTC: { base: 65000, name: 'BTC-USDT-SWAP', decimals: 0, sizeDecimals: 3 }
+        };
+
+        function generateMockCandles(count = 80) {
+            const config = symbolConfig[currentSymbol];
+            const candles = [];
+            let price = config.base * 0.97;
+            const now = Date.now();
+            for (let i = 0; i < count; i++) {
+                const time = now - (count - i) * 3600000;
+                const change = (Math.random() - 0.48) * config.base * 0.012;
+                const open = price;
+                const close = price + change;
+                const high = Math.max(open, close) + Math.random() * config.base * 0.005;
+                const low = Math.min(open, close) - Math.random() * config.base * 0.005;
+                const volume = Math.random() * 500 + 200;
+                candles.push({ time, open, high, low, close, volume });
+                price = close;
+            }
+            currentPrice = candles[candles.length - 1].close;
+            return candles;
+        }
+
+        function calculateMA(candles, period) {
+            const ma = [];
+            for (let i = 0; i < candles.length; i++) {
+                if (i < period - 1) {
+                    ma.push(null);
+                } else {
+                    let sum = 0;
+                    for (let j = 0; j < period; j++) {
+                        sum += candles[i - j].close;
+                    }
+                    ma.push(sum / period);
+                }
+            }
+            return ma;
+        }
+
+        function formatPrice(price) {
+            const config = symbolConfig[currentSymbol];
+            return '$' + price.toLocaleString('en-US', { minimumFractionDigits: config.decimals, maximumFractionDigits: config.decimals });
+        }
+
+        function initChart() {
+            const candles = generateMockCandles(80);
+            const maFast = calculateMA(candles, 10);
+            const maSlow = calculateMA(candles, 50);
+
+            const ctx = document.getElementById('candleChart').getContext('2d');
+            if (candleChart) candleChart.destroy();
+
+            candleChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: candles.map(c => c.time),
+                    datasets: [
+                        {
+                            label: currentSymbol + '价格',
+                            data: candles.map(c => ({ x: c.time, y: c.close })),
+                            borderColor: 'rgba(99, 102, 241, 0.2)',
+                            backgroundColor: (ctx) => {
+                                const gradient = ctx.chart.ctx.createLinearGradient(0, 0, 0, 300);
+                                gradient.addColorStop(0, 'rgba(99, 102, 241, 0.2)');
+                                gradient.addColorStop(1, 'rgba(99, 102, 241, 0.0)');
+                                return gradient;
+                            },
+                            borderWidth: 1.5,
+                            pointRadius: 0,
+                            fill: true,
+                            tension: 0.1
+                        },
+                        {
+                            label: 'MA10',
+                            data: candles.map((c, i) => ({ x: c.time, y: maFast[i] })).filter(d => d.y),
+                            borderColor: '#00d4ff',
+                            borderWidth: 1.5,
+                            pointRadius: 0,
+                            fill: false,
+                            tension: 0.1
+                        },
+                        {
+                            label: 'MA50',
+                            data: candles.map((c, i) => ({ x: c.time, y: maSlow[i] })).filter(d => d.y),
+                            borderColor: '#f59e0b',
+                            borderWidth: 1.5,
+                            pointRadius: 0,
+                            fill: false,
+                            tension: 0.1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: { color: '#718096', usePointStyle: true, pointStyle: 'line', font: { size: 11 } }
+                        },
+                        tooltip: {
+                            backgroundColor: '#1a1f2e',
+                            titleColor: '#e7e9ea',
+                            bodyColor: '#e7e9ea',
+                            borderColor: '#2d3748',
+                            borderWidth: 1,
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + formatPrice(context.parsed.y);
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: { unit: 'hour', displayFormats: { hour: 'MM-dd HH:mm' } },
+                            ticks: { color: '#718096', maxTicksLimit: 8, font: { size: 10 } },
+                            grid: { color: 'rgba(45, 55, 72, 0.4)' }
+                        },
+                        y: {
+                            ticks: {
+                                color: '#718096',
+                                font: { size: 10 },
+                                callback: function(value) { return formatPrice(value); }
+                            },
+                            grid: { color: 'rgba(45, 55, 72, 0.4)' }
+                        }
+                    }
+                }
+            });
+
+            const lastFast = maFast[maFast.length - 1];
+            const lastSlow = maSlow[maSlow.length - 1];
+            if (lastFast) document.getElementById('maFast').textContent = formatPrice(lastFast);
+            if (lastSlow) document.getElementById('maSlow').textContent = formatPrice(lastSlow);
+        }
+
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = 'toast show ' + type;
+            setTimeout(() => { toast.className = 'toast'; }, 3000);
+        }
+
+        function setAmount(amt) {
+            document.getElementById('orderAmount').value = amt;
+            updateCalc();
+        }
+
+        function updateCalc() {
+            const amt = parseFloat(document.getElementById('orderAmount').value) || 0;
+            const config = symbolConfig[currentSymbol];
+            const size = (amt * leverage) / currentPrice;
+            document.getElementById('calcSize').textContent = size.toFixed(config.sizeDecimals);
+            document.getElementById('calcMargin').textContent = amt.toFixed(0);
+        }
+
+        function switchSymbol(sym) {
+            currentSymbol = sym;
+            document.querySelectorAll('.symbol-btn').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById('chartSymbol').textContent = symbolConfig[sym].name + ' · 1小时';
+            entryPrice = currentPrice * 0.98;
+            initChart();
+            updateCalc();
+            updateUI();
+        }
+
+        function openPosition(side) {
+            const amt = parseFloat(document.getElementById('orderAmount').value) || 0;
+            if (amt <= 0) {
+                showToast('请输入有效金额', 'error');
+                return;
+            }
+
+            const config = symbolConfig[currentSymbol];
+            const size = (amt * leverage) / currentPrice;
+            const sideText = side === 'long' ? '做多' : '做空';
+
+            if (hasPosition && positionSide === side) {
+                showToast(`已持有${sideText}仓位，请先平仓`, 'error');
+                return;
+            }
+
+            hasPosition = true;
+            positionSide = side;
+            entryPrice = currentPrice;
+
+            showToast(`${sideText}开单成功: ${amt}U = ${size.toFixed(config.sizeDecimals)}张 @ ${formatPrice(currentPrice)}`, 'success');
+
+            const list = document.getElementById('tradeList');
+            const newItem = document.createElement('div');
+            newItem.className = 'trade-item';
+            newItem.innerHTML = `
+                <div class="trade-left">
+                    <span class="trade-side ${side}">${side === 'long' ? '多' : '空'}</span>
+                    <div class="trade-info">
+                        <div class="trade-reason">手动${sideText} · ${amt}U</div>
+                        <div class="trade-time">${new Date().toLocaleString('zh-CN', { hour12: false }).slice(5, 16)} · @ ${formatPrice(currentPrice)}</div>
+                    </div>
+                </div>
+                <div class="trade-pnl positive">进行中</div>
+            `;
+            list.insertBefore(newItem, list.firstChild);
+
+            updateUI();
+        }
+
+        function closeAll() {
+            if (!hasPosition) {
+                showToast('当前没有持仓', 'info');
+                return;
+            }
+
+            const config = symbolConfig[currentSymbol];
+            const pnlUsd = positionSide === 'long'
+                ? (currentPrice - entryPrice) * ((100 * leverage) / entryPrice) * 0.1
+                : (entryPrice - currentPrice) * ((100 * leverage) / entryPrice) * 0.1;
+
+            const pnlPct = positionSide === 'long'
+                ? (currentPrice - entryPrice) / entryPrice * 100 * leverage
+                : (entryPrice - currentPrice) / entryPrice * 100 * leverage;
+
+            hasPosition = false;
+            showToast(`平仓成功: ${pnlUsd >= 0 ? '+' : ''}$${pnlUsd.toFixed(2)} (${pnlPct.toFixed(2)}%)`, pnlUsd >= 0 ? 'success' : 'error');
+            updateUI();
+        }
+
+        function updateUI() {
+            const config = symbolConfig[currentSymbol];
+            document.getElementById('currentPrice').textContent = formatPrice(currentPrice);
+
+            if (hasPosition) {
+                const size = (100 * leverage) / entryPrice;
+                const pnlUsd = positionSide === 'long'
+                    ? (currentPrice - entryPrice) * size
+                    : (entryPrice - currentPrice) * size;
+                const pnlPct = positionSide === 'long'
+                    ? (currentPrice - entryPrice) / entryPrice * 100 * leverage
+                    : (entryPrice - currentPrice) / entryPrice * 100 * leverage;
+
+                const posSideEl = document.getElementById('posSide');
+                posSideEl.textContent = positionSide === 'long' ? '做多' : '做空';
+                posSideEl.className = 'val ' + positionSide;
+
+                document.getElementById('posMargin').textContent = '100 USDT';
+                document.getElementById('posEntry').textContent = formatPrice(entryPrice);
+                document.getElementById('posSize').textContent = size.toFixed(config.sizeDecimals) + ' 张';
+
+                const pnlBox = document.getElementById('pnlBox');
+                pnlBox.className = 'pnl-box' + (pnlUsd >= 0 ? '' : ' negative');
+                pnlBox.querySelector('.pnl-value').textContent =
+                    (pnlUsd >= 0 ? '+' : '') + '$' + pnlUsd.toFixed(2) + ' (' + (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%)';
+
+                const pnlEl = document.getElementById('positionPnl');
+                pnlEl.textContent = (pnlUsd >= 0 ? '+' : '') + '$' + pnlUsd.toFixed(2);
+                pnlEl.className = 'value ' + (pnlUsd >= 0 ? 'positive' : 'negative');
+
+                const pnlPctEl = document.getElementById('positionPnlPct');
+                pnlPctEl.textContent = (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%';
+            } else {
+                const posSideEl = document.getElementById('posSide');
+                posSideEl.textContent = '空仓';
+                posSideEl.className = 'val';
+                posSideEl.style.color = '#718096';
+
+                document.getElementById('posMargin').textContent = '--';
+                document.getElementById('posEntry').textContent = '--';
+                document.getElementById('posSize').textContent = '--';
+
+                const pnlBox = document.getElementById('pnlBox');
+                pnlBox.className = 'pnl-box';
+                pnlBox.querySelector('.pnl-value').textContent = '$0.00 (0.00%)';
+
+                document.getElementById('positionPnl').textContent = '$0.00';
+                document.getElementById('positionPnl').className = 'value';
+                document.getElementById('positionPnlPct').textContent = '0.00%';
+            }
+        }
+
+        function simulatePrice() {
+            if (!isRunning) return;
+            const config = symbolConfig[currentSymbol];
+            const change = (Math.random() - 0.48) * config.base * 0.002;
+            currentPrice += change;
+            updateUI();
+            updateCalc();
+        }
+
+        function simulateSignal() {
+            const r = Math.random();
+            let signal;
+            if (r < 0.7) signal = 'HOLD';
+            else if (r < 0.85) signal = 'BUY';
+            else signal = 'SELL';
+
+            const badge = document.getElementById('signalBadge');
+            badge.textContent = signal;
+            badge.className = 'signal-badge ' + signal.toLowerCase();
+        }
+
+        document.getElementById('orderAmount').addEventListener('input', updateCalc);
+
+        initChart();
+        updateUI();
+        setInterval(simulatePrice, 2000);
+        setInterval(simulateSignal, 15000);
+    </script>
+</body>
+</html>

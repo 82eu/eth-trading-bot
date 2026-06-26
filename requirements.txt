@@ -1,0 +1,9 @@
+flask==3.0.0
+flask-cors==4.0.0
+python-dotenv==1.0.1
+okx-sdk==5.5.812
+pandas==2.0.3
+numpy==1.24.4
+loguru==0.7.3
+gunicorn==21.2.0
+requests==2.31.0
