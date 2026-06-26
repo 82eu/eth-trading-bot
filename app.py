@@ -523,10 +523,10 @@ def get_auto_trader():
     global auto_trader_instance
     if auto_trader_instance is None:
         if not MOCK_MODE:
+            from auto_trader import get_auto_trader as _gat
             from okx_client import OKXClient
-            from auto_trader import AutoTrader
             client = OKXClient()
-            auto_trader_instance = AutoTrader(client, trading_status["symbol"])
+            auto_trader_instance = _gat(client)
         else:
             auto_trader_instance = None
     return auto_trader_instance
@@ -616,11 +616,11 @@ def auto_test():
     direction = data.get("direction")
 
     try:
-        result = at.test_open_order(tf, direction)
-        if result and result.get("success"):
+        success, result = at.test_open_order(tf, direction)
+        if success:
             return jsonify({"code": 0, "msg": "测试开单成功", "data": result})
         else:
-            return jsonify({"code": 1, "msg": result.get("msg", "测试开单失败") if result else "开单失败"}), 400
+            return jsonify({"code": 1, "msg": result if isinstance(result, str) else "测试开单失败"}), 400
     except Exception as e:
         logger.error(f"测试开单异常: {e}")
         return jsonify({"code": 1, "msg": str(e)}), 500
