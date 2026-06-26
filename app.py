@@ -200,10 +200,32 @@ def get_balance():
             from okx_client import OKXClient
             client = OKXClient()
             result = client.get_balance()
-            data = {"total": 0, "available": 0, "used": 0, "pnl_24h": 0, "pnl_24h_pct": 0, "equity": 0}
+            total = 0
+            available = 0
+            used = 0
+            equity = 0
+            if result and isinstance(result, list):
+                for item in result:
+                    for d in item.get("details", []):
+                        if d.get("ccy") == "USDT":
+                            available = float(d.get("availBal", 0))
+                            total = float(d.get("bal", 0))
+                            used = float(d.get("frozenBal", 0))
+                            eq = d.get("eq")
+                            if eq:
+                                equity = float(eq)
+                            break
+            data = {
+                "total": total,
+                "available": available,
+                "used": used,
+                "equity": equity or total,
+                "pnl_24h": 0,
+                "pnl_24h_pct": 0,
+            }
         except Exception as e:
             print(f"获取余额失败: {e}")
-            data = {"total": 5000, "available": 4200, "used": 800, "pnl_24h": 128.5, "pnl_24h_pct": 2.57, "equity": 5128.5}
+            data = {"total": 0, "available": 0, "used": 0, "pnl_24h": 0, "pnl_24h_pct": 0, "equity": 0}
 
     return jsonify({"code": 0, "data": data})
 
@@ -312,7 +334,7 @@ def close_position():
     global trading_status, trade_history
     data = request.json or {}
     symbol = data.get("symbol", "ETH-USDT-SWAP")
-    amount_usdt = data.get("amount_usdt")  # 不传则全平
+    amount_usdt = data.get("amount_usdt")
 
     if MOCK_MODE:
         current_price = trading_status["current_price"]
@@ -351,8 +373,38 @@ def close_position():
         try:
             from okx_client import OKXClient
             client = OKXClient()
-            # 平仓逻辑
-            return jsonify({"code": 0, "data": {"message": "平仓成功"}})
+            positions = client.get_position(symbol)
+            if not positions:
+                return jsonify({"code": 1, "msg": "获取持仓失败"}), 400
+
+            pos = None
+            for p in positions:
+                if float(p.get("pos", 0)) != 0:
+                    pos = p
+                    break
+
+            if not pos:
+                return jsonify({"code": 1, "msg": "当前没有持仓"}), 400
+
+            pos_side = pos.get("posSide")
+            size = float(pos.get("pos", 0))
+            if amount_usdt:
+                size = min(size, (amount_usdt * trading_status["leverage"]) / float(pos.get("avgPx", 1)))
+
+            close_side = "sell" if pos_side == "long" else "buy"
+            order_id = client.place_order(symbol, close_side, size, "market", None, pos_side)
+
+            if order_id:
+                trading_status["position"] = 0
+                trading_status["position_side"] = ""
+                trading_status["entry_price"] = 0
+                trading_status["position_size"] = 0
+                trading_status["position_usdt"] = 0
+                trading_status["pnl"] = 0
+                trading_status["pnl_pct"] = 0
+                return jsonify({"code": 0, "data": {"message": "平仓成功", "order_id": order_id}})
+            else:
+                return jsonify({"code": 1, "msg": "平仓失败"}), 400
         except Exception as e:
             return jsonify({"code": 1, "msg": str(e)}), 500
 
