@@ -5,3 +5,4 @@ okx-sdk>=5.5.0
 loguru>=0.7.0
 gunicorn>=21.0.0
 requests>=2.31.0
+websockets>=12.0
