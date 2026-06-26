@@ -321,34 +321,38 @@ class OKXClient:
             logger.error(f"查询订单异常: {e}")
             return None
 
-    def set_stop_take_profit(self, symbol, pos_side, stop_loss=None, take_profit=None):
+    def set_stop_take_profit(self, symbol, pos_side, stop_loss=None, take_profit=None, size=None):
         """设置止盈止损条件单"""
         try:
             inst_id = self._normalize_symbol(symbol)
             if stop_loss:
-                self._place_algo_order(inst_id, pos_side, "condition", stop_loss, "stop")
+                self._place_algo_order(inst_id, pos_side, "stop", stop_loss, size)
                 logger.info(f"设置止损: {inst_id} {pos_side} @ {stop_loss}")
             if take_profit:
-                self._place_algo_order(inst_id, pos_side, "condition", take_profit, "profit")
+                self._place_algo_order(inst_id, pos_side, "profit", take_profit, size)
                 logger.info(f"设置止盈: {inst_id} {pos_side} @ {take_profit}")
             return True
         except Exception as e:
             logger.error(f"设置止盈止损异常: {e}")
             return False
 
-    def _place_algo_order(self, inst_id, pos_side, algo_type, trigger_price, tp_side):
-        """放置条件单"""
+    def _place_algo_order(self, inst_id, pos_side, ord_type, trigger_price, size=None):
+        """放置条件单（止盈/止损）"""
         side = "sell" if pos_side == "long" else "buy"
-        body = json.dumps({
+        body_dict = {
             "instId": inst_id,
             "tdMode": "cross",
             "side": side,
-            "ordType": "market",
-            "sz": "0",
+            "ordType": ord_type,
             "posSide": pos_side,
-            "algoType": algo_type,
             "triggerPx": str(trigger_price),
-        }, separators=(',', ':'))
+        }
+        if size:
+            body_dict["sz"] = str(size)
+        else:
+            body_dict["closeFraction"] = "1"
+
+        body = json.dumps(body_dict, separators=(',', ':'))
 
         headers = self._get_auth_headers("POST", "/api/v5/trade/order-algo", body)
         resp = requests.post(
