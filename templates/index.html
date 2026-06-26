@@ -41,14 +41,7 @@
         }
         .mode-badge.mock { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
         .mode-badge.real { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
-        .leverage-badge {
-            padding: 4px 10px;
-            background: rgba(139, 92, 246, 0.2);
-            color: #a78bfa;
-            border-radius: 6px;
-            font-size: 12px;
-            font-weight: 600;
-        }
+
         .status-badge {
             display: flex;
             align-items: center;
@@ -422,6 +415,40 @@
             transition: all 0.2s;
         }
         .btn-save-config:hover { background: #4a5568; color: #e7e9ea; }
+        .auto-current-config {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #2d3748;
+        }
+        .auto-current-config .config-label {
+            font-size: 12px;
+            color: #718096;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        .config-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        .config-item {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            background: #0f1419;
+            border: 1px solid #2d3748;
+            border-radius: 6px;
+            padding: 8px 10px;
+        }
+        .config-key {
+            font-size: 10px;
+            color: #718096;
+        }
+        .config-val {
+            font-size: 13px;
+            font-weight: 600;
+            color: #e7e9ea;
+        }
         .auto-test-section {
             margin-top: 12px;
             padding-top: 12px;
@@ -476,53 +503,7 @@
             color: #718096;
             text-align: center;
         }
-        .multi-tf-list { display: flex; flex-direction: column; gap: 8px; }
-        .tf-card {
-            background: #0f1419;
-            border: 1px solid #2d3748;
-            border-radius: 8px;
-            padding: 10px;
-        }
-        .tf-card.in-zone { border-color: #627eea; background: rgba(98, 126, 234, 0.05); }
-        .tf-card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 6px;
-        }
-        .tf-name { font-size: 13px; font-weight: 700; color: #e7e9ea; }
-        .tf-trend {
-            font-size: 10px;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-weight: 700;
-        }
-        .tf-trend.long { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
-        .tf-trend.short { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
-        .tf-trend.neutral { background: rgba(107, 114, 128, 0.2); color: #6b7280; }
-        .tf-price-row { display: flex; justify-content: space-between; font-size: 11px; color: #718096; padding: 2px 0; }
-        .tf-price-row .val { color: #e7e9ea; }
-        .tf-zone-bar {
-            height: 4px;
-            background: #2d3748;
-            border-radius: 2px;
-            margin-top: 6px;
-            position: relative;
-            overflow: hidden;
-        }
-        .tf-zone-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #ef4444, #627eea, #22c55e);
-            border-radius: 2px;
-        }
-        .tf-zone-marker {
-            position: absolute;
-            top: -2px;
-            width: 2px;
-            height: 8px;
-            background: #fbbf24;
-            transform: translateX(-50%);
-        }
+
         .signal-log { max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
         .signal-item {
             font-size: 11px;
@@ -605,7 +586,6 @@
             <span class="mode-badge" id="modeBadge">加载中</span>
         </div>
         <div class="header-right">
-            <span class="leverage-badge">10x 杠杆</span>
             <div class="status-badge">
                 <div class="status-dot"></div>
                 <span id="statusText">连接中</span>
@@ -732,27 +712,7 @@
                     </div>
                 </div>
 
-                <div class="panel-card">
-                    <div class="panel-title">📈 均线策略</div>
-                    <div class="position-info">
-                        <div class="position-row">
-                            <span class="key">MA10 (快线)</span>
-                            <span class="val" id="maFast" style="color: #00d4ff;">--</span>
-                        </div>
-                        <div class="position-row">
-                            <span class="key">MA50 (慢线)</span>
-                            <span class="val" id="maSlow" style="color: #f59e0b;">--</span>
-                        </div>
-                        <div class="position-row">
-                            <span class="key">周期</span>
-                            <span class="val">1小时</span>
-                        </div>
-                        <div class="position-row">
-                            <span class="key">单笔</span>
-                            <span class="val">100 USDT</span>
-                        </div>
-                    </div>
-                </div>
+
 
                 <div class="panel-card">
                     <div class="panel-title">
@@ -777,7 +737,7 @@
 
                         <div class="auto-config-row">
                             <label>总金额</label>
-                            <input type="number" id="autoAmount" value="100" min="10" step="10">
+                            <input type="number" id="autoAmount" value="100" min="5" step="1">
                             <span class="unit">U</span>
                         </div>
 
@@ -823,13 +783,40 @@
                             </div>
                             <div class="test-hint">点击即用当前配置和EMA策略逻辑开一单测试</div>
                         </div>
-                    </div>
-                </div>
 
-                <div class="panel-card">
-                    <div class="panel-title">📊 多周期EMA</div>
-                    <div class="multi-tf-list" id="multiTfList">
-                        <div class="loading">加载中...</div>
+                        <div class="auto-current-config">
+                            <div class="config-label">当前配置</div>
+                            <div class="config-grid">
+                                <div class="config-item">
+                                    <span class="config-key">状态</span>
+                                    <span class="config-val" id="cfgRunning">已停止</span>
+                                </div>
+                                <div class="config-item">
+                                    <span class="config-key">杠杆</span>
+                                    <span class="config-val" id="cfgLeverage">100x</span>
+                                </div>
+                                <div class="config-item">
+                                    <span class="config-key">启用周期</span>
+                                    <span class="config-val" id="cfgTfs">-</span>
+                                </div>
+                                <div class="config-item">
+                                    <span class="config-key">总金额</span>
+                                    <span class="config-val" id="cfgAmount">-</span>
+                                </div>
+                                <div class="config-item">
+                                    <span class="config-key">分批份数</span>
+                                    <span class="config-val" id="cfgEntries">-</span>
+                                </div>
+                                <div class="config-item">
+                                    <span class="config-key">止盈点数</span>
+                                    <span class="config-val" id="cfgTp">-</span>
+                                </div>
+                                <div class="config-item">
+                                    <span class="config-key">止损点数</span>
+                                    <span class="config-val" id="cfgSl">-</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -894,11 +881,26 @@
                 b.classList.toggle('active', parseInt(b.dataset.lev) === lev);
             });
             updateCalc();
+            const cfgLev = document.getElementById('cfgLeverage');
+            if (cfgLev) cfgLev.textContent = lev + 'x';
             fetch(API_BASE + '/api/set_leverage', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ leverage: lev })
             }).catch(e => console.warn('设置杠杆:', e));
+        }
+
+        function updateConfigDisplay(config, running) {
+            document.getElementById('cfgRunning').textContent = running ? '运行中' : '已停止';
+            document.getElementById('cfgRunning').style.color = running ? '#48bb78' : '#718096';
+            document.getElementById('cfgLeverage').textContent = (config.leverage || leverage) + 'x';
+            const tfs = config.enabled_tfs || [];
+            const tfMap = {'5m':'5m','15m':'15m','30m':'30m','1h':'1h','4h':'4h'};
+            document.getElementById('cfgTfs').textContent = tfs.length ? tfs.map(t => tfMap[t] || t).join(' ') : '-';
+            document.getElementById('cfgAmount').textContent = (config.total_amount_usdt || 0) + ' U';
+            document.getElementById('cfgEntries').textContent = (config.num_entries || 1) + '份';
+            document.getElementById('cfgTp').textContent = (config.tp_points || 0) + ' 点';
+            document.getElementById('cfgSl').textContent = (config.sl_points || 0) + ' 点';
         }
 
         function setTpSlPercent(tpPct, slPct) {
@@ -1012,9 +1014,7 @@
                     document.getElementById('chartLoading').style.display = 'none';
                     document.getElementById('candleChart').style.display = 'block';
 
-                    const last = data.data[data.data.length - 1];
-                    if (last.ma_fast) document.getElementById('maFast').textContent = '$' + last.ma_fast.toFixed(2);
-                    if (last.ma_slow) document.getElementById('maSlow').textContent = '$' + last.ma_slow.toFixed(2);
+
                 }
             } catch (e) {
                 console.error('获取K线失败:', e);
@@ -1236,6 +1236,7 @@
             tp_points: 50,
             sl_points: 30,
         };
+        let autoConfigEditing = false;
 
         async function testEMAStrategy(direction) {
             const tf = document.getElementById('testTf').value;
@@ -1286,14 +1287,29 @@
             });
         });
 
+        function setAutoEditing(val) {
+            autoConfigEditing = val;
+        }
         document.getElementById('autoAmount').addEventListener('input', (e) => {
             autoConfig.total_amount_usdt = parseFloat(e.target.value) || 0;
+            setAutoEditing(true);
+        });
+        document.getElementById('autoAmount').addEventListener('blur', () => {
+            setTimeout(() => setAutoEditing(false), 500);
         });
         document.getElementById('autoTp').addEventListener('input', (e) => {
             autoConfig.tp_points = parseFloat(e.target.value) || 0;
+            setAutoEditing(true);
+        });
+        document.getElementById('autoTp').addEventListener('blur', () => {
+            setTimeout(() => setAutoEditing(false), 500);
         });
         document.getElementById('autoSl').addEventListener('input', (e) => {
             autoConfig.sl_points = parseFloat(e.target.value) || 0;
+            setAutoEditing(true);
+        });
+        document.getElementById('autoSl').addEventListener('blur', () => {
+            setTimeout(() => setAutoEditing(false), 500);
         });
 
         async function saveAutoConfig() {
@@ -1392,103 +1408,44 @@
 
                     if (s.config) {
                         autoConfig = { ...autoConfig, ...s.config };
-                        document.getElementById('autoAmount').value = s.config.total_amount_usdt || 100;
-                        document.getElementById('autoTp').value = s.config.tp_points || 50;
-                        document.getElementById('autoSl').value = s.config.sl_points || 30;
 
-                        document.querySelectorAll('.entry-btn').forEach(b => {
-                            b.classList.toggle('active', parseInt(b.dataset.entries) === (s.config.num_entries || 2));
-                        });
+                        if (!autoConfigEditing) {
+                            const amountInput = document.getElementById('autoAmount');
+                            const tpInput = document.getElementById('autoTp');
+                            const slInput = document.getElementById('autoSl');
 
-                        if (s.config.enabled_tfs) {
-                            document.querySelectorAll('.tf-cb').forEach(cb => {
-                                cb.checked = s.config.enabled_tfs.includes(cb.value);
+                            if (document.activeElement !== amountInput) {
+                                amountInput.value = s.config.total_amount_usdt || 100;
+                            }
+                            if (document.activeElement !== tpInput) {
+                                tpInput.value = s.config.tp_points || 50;
+                            }
+                            if (document.activeElement !== slInput) {
+                                slInput.value = s.config.sl_points || 30;
+                            }
+
+                            document.querySelectorAll('.entry-btn').forEach(b => {
+                                b.classList.toggle('active', parseInt(b.dataset.entries) === (s.config.num_entries || 2));
                             });
+
+                            if (s.config.enabled_tfs) {
+                                document.querySelectorAll('.tf-cb').forEach(cb => {
+                                    cb.checked = s.config.enabled_tfs.includes(cb.value);
+                                });
+                            }
                         }
+
+                        updateConfigDisplay(s.config, autoTradingRunning);
                     }
 
-                    renderMultiTf(s.analysis || {});
-                    renderSignalLog(s.signals || []);
+                    renderSignalLog(s.logs || []);
                 }
             } catch (e) {
                 console.error('获取自动交易状态失败:', e);
             }
         }
 
-        function renderMultiTf(analysis) {
-            const list = document.getElementById('multiTfList');
-            const tfs = ["5m", "15m", "30m", "1h", "4h"];
-            const tfNames = { "5m": "5分钟", "15m": "15分钟", "30m": "30分钟", "1h": "1小时", "4h": "4小时" };
 
-            let html = '';
-            for (const tf of tfs) {
-                const a = analysis[tf];
-                if (!a) {
-                    html += `
-                        <div class="tf-card">
-                            <div class="tf-card-header">
-                                <span class="tf-name">${tfNames[tf]}</span>
-                                <span class="tf-trend neutral">--</span>
-                            </div>
-                            <div class="tf-price-row"><span>加载中...</span></div>
-                        </div>
-                    `;
-                    continue;
-                }
-
-                const inZone = a.in_zone;
-                const trend = a.trend || 'neutral';
-                const trendText = trend === 'long' ? '多头' : trend === 'short' ? '空头' : '中性';
-                const currentPrice = a.current_price || 0;
-                const emaHigh = a.ema_high || 0;
-                const emaLow = a.ema_low || 0;
-                const zoneWidth = a.zone_width || 0;
-                const zoneWidthPct = a.zone_width_pct || 0;
-
-                let markerPos = 0;
-                if (emaHigh > emaLow && currentPrice > 0) {
-                    if (currentPrice <= emaLow) {
-                        markerPos = 0;
-                    } else if (currentPrice >= emaHigh) {
-                        markerPos = 100;
-                    } else {
-                        markerPos = ((currentPrice - emaLow) / (emaHigh - emaLow)) * 100;
-                    }
-                }
-
-                const isRanging = a.is_ranging ? '（震荡）' : '';
-
-                html += `
-                    <div class="tf-card ${inZone ? 'in-zone' : ''}">
-                        <div class="tf-card-header">
-                            <span class="tf-name">${tfNames[tf]}${isRanging}</span>
-                            <span class="tf-trend ${trend}">${trendText}</span>
-                        </div>
-                        <div class="tf-price-row">
-                            <span>价格</span>
-                            <span class="val">$${currentPrice.toFixed(2)}</span>
-                        </div>
-                        <div class="tf-price-row">
-                            <span>EMA180</span>
-                            <span class="val">$${(a.ema180 || 0).toFixed(2)}</span>
-                        </div>
-                        <div class="tf-price-row">
-                            <span>EMA250</span>
-                            <span class="val">$${(a.ema250 || 0).toFixed(2)}</span>
-                        </div>
-                        <div class="tf-price-row">
-                            <span>区间宽度</span>
-                            <span class="val">${zoneWidth.toFixed(2)} (${zoneWidthPct.toFixed(3)}%)</span>
-                        </div>
-                        <div class="tf-zone-bar">
-                            <div class="tf-zone-fill" style="width: 100%"></div>
-                            <div class="tf-zone-marker" style="left: ${markerPos}%"></div>
-                        </div>
-                    </div>
-                `;
-            }
-            list.innerHTML = html;
-        }
 
         function renderSignalLog(signals) {
             const log = document.getElementById('signalLog');
@@ -1499,7 +1456,7 @@
             log.innerHTML = signals.map(s => `
                 <div class="signal-item level-${s.level || 'info'}">
                     <span class="signal-time">${s.time || ''}</span>
-                    <span class="signal-msg">${s.message || ''}</span>
+                    <span class="signal-msg">${s.msg || s.message || ''}</span>
                 </div>
             `).join('');
         }
