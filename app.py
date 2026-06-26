@@ -647,9 +647,9 @@ def auto_config():
         config["leverage"] = int(data["leverage"])
 
     if at:
-        at.set_config(**config)
+        at.update_config(config)
     else:
-        trading_status.update(config)
+        pass
 
     return jsonify({"code": 0, "msg": "配置已更新", "config": config})
 
