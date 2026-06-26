@@ -422,6 +422,60 @@
             transition: all 0.2s;
         }
         .btn-save-config:hover { background: #4a5568; color: #e7e9ea; }
+        .auto-test-section {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #2d3748;
+        }
+        .test-tf-selector {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .test-tf-selector label { font-size: 11px; color: #718096; }
+        .test-select {
+            flex: 1;
+            background: #0f1419;
+            border: 1px solid #2d3748;
+            border-radius: 6px;
+            padding: 5px 8px;
+            color: #e7e9ea;
+            font-size: 12px;
+            outline: none;
+        }
+        .test-select:focus { border-color: #627eea; }
+        .test-direction-row { display: flex; gap: 6px; margin-bottom: 6px; }
+        .test-dir-btn {
+            flex: 1;
+            padding: 7px 4px;
+            border: none;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .test-dir-btn.test-long {
+            background: rgba(16, 185, 129, 0.15);
+            color: #10b981;
+        }
+        .test-dir-btn.test-long:hover { background: rgba(16, 185, 129, 0.3); }
+        .test-dir-btn.test-short {
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+        }
+        .test-dir-btn.test-short:hover { background: rgba(239, 68, 68, 0.3); }
+        .test-dir-btn.test-auto {
+            background: rgba(99, 102, 241, 0.15);
+            color: #6366f1;
+        }
+        .test-dir-btn.test-auto:hover { background: rgba(99, 102, 241, 0.3); }
+        .test-hint {
+            font-size: 10px;
+            color: #718096;
+            text-align: center;
+        }
         .multi-tf-list { display: flex; flex-direction: column; gap: 8px; }
         .tf-card {
             background: #0f1419;
@@ -645,13 +699,6 @@
                             <button class="btn-long" onclick="openPosition('long')">开多 / 平空</button>
                             <button class="btn-short" onclick="openPosition('short')">开空 / 平多</button>
                         </div>
-                        <div class="test-trade-row">
-                            <span class="test-label">测试开单(10U)</span>
-                            <div class="test-btns">
-                                <button class="test-btn test-long" onclick="testOrder('long')">测多</button>
-                                <button class="test-btn test-short" onclick="testOrder('short')">测空</button>
-                            </div>
-                        </div>
                         <div class="btn-group">
                             <button class="btn btn-danger" onclick="closeAll()">一键全平</button>
                         </div>
@@ -755,6 +802,26 @@
                         </div>
 
                         <button class="btn-save-config" onclick="saveAutoConfig()">保存配置</button>
+
+                        <div class="auto-test-section">
+                            <div class="config-label">策略测试</div>
+                            <div class="test-tf-selector">
+                                <label>测试周期:</label>
+                                <select id="testTf" class="test-select">
+                                    <option value="5m">5分钟</option>
+                                    <option value="15m">15分钟</option>
+                                    <option value="30m">30分钟</option>
+                                    <option value="1h">1小时</option>
+                                    <option value="4h">4小时</option>
+                                </select>
+                            </div>
+                            <div class="test-direction-row">
+                                <button class="test-dir-btn test-long" onclick="testEMAStrategy('long')">测试做多</button>
+                                <button class="test-dir-btn test-short" onclick="testEMAStrategy('short')">测试做空</button>
+                                <button class="test-dir-btn test-auto" onclick="testEMAStrategy(null)">按趋势</button>
+                            </div>
+                            <div class="test-hint">点击即用当前配置和EMA策略逻辑开一单测试</div>
+                        </div>
                     </div>
                 </div>
 
@@ -1169,38 +1236,36 @@
             sl_points: 30,
         };
 
-        async function testOrder(side) {
-            const takeProfit = document.getElementById('takeProfit').value;
-            const stopLoss = document.getElementById('stopLoss').value;
-
-            showToast('测试开单中... (10U)', 'info');
+        async function testEMAStrategy(direction) {
+            const tf = document.getElementById('testTf').value;
+            const dirText = direction === null ? '按趋势' : (direction === 'long' ? '做多' : '做空');
+            showToast(`EMA策略测试中... (${tf} ${dirText})`, 'info');
 
             try {
-                const res = await fetch(API_BASE + '/api/order', {
+                const res = await fetch(API_BASE + '/api/auto/test', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        side: side === 'long' ? 'buy' : 'sell',
-                        amount_usdt: 10,
-                        pos_side: side,
-                        leverage: leverage,
-                        take_profit: takeProfit || null,
-                        stop_loss: stopLoss || null
+                        tf: tf,
+                        direction: direction
                     })
                 });
                 const data = await res.json();
                 if (data.code === 0) {
-                    showToast('测试开单成功: 10U ' + (side === 'long' ? '多' : '空'), 'success');
+                    const d = data.data || {};
+                    const slAdj = d.sl_adjusted ? ' (止损缩1/3)' : '';
+                    showToast(`测试成功: ${d.direction} $${d.current_price?.toFixed(2)}${slAdj}`, 'success');
                     setTimeout(() => {
                         fetchStatus();
                         fetchBalance();
+                        fetchAutoStatus();
                         fetchTrades();
                     }, 1000);
                 } else {
-                    showToast('开单失败: ' + (data.msg || '未知错误'), 'error');
+                    showToast('测试失败: ' + (data.msg || '未知错误'), 'error');
                 }
             } catch (e) {
-                showToast('开单失败: ' + e.message, 'error');
+                showToast('测试失败: ' + e.message, 'error');
             }
         }
 
