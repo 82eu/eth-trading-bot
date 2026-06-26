@@ -333,6 +333,11 @@ class AutoTrader:
 
     def get_status(self):
         """获取状态"""
+        if not self.analysis_cache:
+            try:
+                self.refresh_analysis()
+            except Exception as e:
+                logger.error(f"刷新分析数据失败: {e}")
         return {
             "running": self.running,
             "config": self.config,
@@ -341,3 +346,18 @@ class AutoTrader:
             "signals": self.signal_log[:20],
             "last_check": self.last_check.strftime("%H:%M:%S") if self.last_check else None,
         }
+
+    def refresh_analysis(self):
+        """刷新所有周期的EMA分析数据（不开单，仅计算展示）"""
+        analysis_map = {}
+        for tf in self.strategy.TIMEFRAMES:
+            try:
+                candles = self._get_candles(tf)
+                if candles:
+                    analysis = self.strategy.analyze_tf(candles, tf)
+                    if analysis:
+                        analysis_map[tf] = analysis
+            except Exception as e:
+                logger.error(f"刷新{tf}分析失败: {e}")
+        self.analysis_cache = analysis_map
+        self.last_check = datetime.now()

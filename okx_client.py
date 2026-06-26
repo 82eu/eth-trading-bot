@@ -101,7 +101,10 @@ class OKXClient:
             return None
 
     def get_candles(self, symbol, timeframe, limit=100):
-        """获取K线数据"""
+        """
+        获取K线数据
+        OKX公共接口单次最多返回100根，需要更多时自动分页拉取
+        """
         try:
             bar_map = {
                 "1m": "1m", "5m": "5m", "15m": "15m",
@@ -110,15 +113,36 @@ class OKXClient:
             }
             bar = bar_map.get(timeframe, "1H")
             url = f"{self.base_url}/api/v5/market/candles"
-            params = {"instId": symbol, "bar": bar, "limit": str(limit)}
-            resp = requests.get(url, params=params, timeout=10)
-            result = resp.json()
-            if result.get("code") == "0":
-                candles = result["data"][::-1]
-                return candles
-            else:
-                logger.error(f"获取K线失败: {result}")
+
+            all_candles = []
+            before = None
+            remaining = limit
+
+            while remaining > 0:
+                page_limit = min(remaining, 100)
+                params = {"instId": symbol, "bar": bar, "limit": str(page_limit)}
+                if before:
+                    params["before"] = before
+                resp = requests.get(url, params=params, timeout=10)
+                result = resp.json()
+                if result.get("code") != "0":
+                    logger.error(f"获取K线失败: {result}")
+                    return None
+                data = result.get("data", [])
+                if not data:
+                    break
+                all_candles.extend(data)
+                if len(data) < page_limit:
+                    break
+                before = data[-1][0]
+                remaining -= len(data)
+
+            if not all_candles:
                 return None
+
+            candles = all_candles[::-1]
+            logger.debug(f"获取K线: {symbol} {bar} 共{len(candles)}根")
+            return candles
         except Exception as e:
             logger.error(f"获取K线异常: {e}")
             return None
