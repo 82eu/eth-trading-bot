@@ -9,6 +9,7 @@ import threading
 import time
 from datetime import datetime
 from ema_strategy import EMAStrategy
+from kline_service import get_kline_service
 
 
 class AutoTrader:
@@ -18,6 +19,7 @@ class AutoTrader:
         self.client = okx_client
         self.symbol = symbol
         self.strategy = EMAStrategy()
+        self.kline_svc = get_kline_service(symbol)
         self.running = False
         self._thread = None
 
@@ -107,11 +109,11 @@ class AutoTrader:
                 logger.error(f"检查{tf}信号失败: {e}")
 
     def _get_candles(self, timeframe):
-        """获取K线"""
+        """获取K线（多数据源兜底）"""
         try:
-            result = self.client.get_candles(self.symbol, timeframe, limit=300)
-            if result and isinstance(result, list):
-                return result
+            candles, source = self.kline_svc.fetch_klines(timeframe, limit=300, symbol=self.symbol)
+            if candles and isinstance(candles, list):
+                return candles
         except Exception as e:
             logger.error(f"获取K线失败 {timeframe}: {e}")
         return None

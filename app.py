@@ -131,7 +131,7 @@ def get_status():
 
 @app.route("/api/candles")
 def get_candles():
-    """获取K线数据"""
+    """获取K线数据（多数据源兜底）"""
     symbol = request.args.get("symbol", "ETH-USDT-SWAP")
     timeframe = request.args.get("timeframe", "1h")
     limit = int(request.args.get("limit", 100))
@@ -140,9 +140,9 @@ def get_candles():
         candles = generate_mock_candles(limit, symbol)
     else:
         try:
-            from okx_client import OKXClient
-            client = OKXClient()
-            candles = client.get_candles(symbol, timeframe, limit)
+            from kline_service import get_kline_service
+            kline_svc = get_kline_service(symbol)
+            candles, source = kline_svc.fetch_klines(timeframe, limit=limit, symbol=symbol)
             if not candles:
                 candles = generate_mock_candles(limit, symbol)
         except Exception as e:
