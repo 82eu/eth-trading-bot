@@ -476,29 +476,6 @@
             color: #718096;
             text-align: center;
         }
-        .leverage-selector {
-            display: flex;
-            gap: 4px;
-            flex: 1;
-        }
-        .lev-btn {
-            flex: 1;
-            padding: 5px 4px;
-            background: #0f1419;
-            border: 1px solid #2d3748;
-            border-radius: 6px;
-            color: #a0aec0;
-            font-size: 11px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .lev-btn:hover { border-color: #627eea; color: #e7e9ea; }
-        .lev-btn.active {
-            background: #627eea;
-            border-color: #627eea;
-            color: #fff;
-        }
         .multi-tf-list { display: flex; flex-direction: column; gap: 8px; }
         .tf-card {
             background: #0f1419;
@@ -690,6 +667,7 @@
                             </div>
                         </div>
                         <div class="quick-btns">
+                            <button class="quick-amt-btn" onclick="setAmount(5)">5U</button>
                             <button class="quick-amt-btn" onclick="setAmount(50)">50U</button>
                             <button class="quick-amt-btn active" onclick="setAmount(100)">100U</button>
                             <button class="quick-amt-btn" onclick="setAmount(200)">200U</button>
@@ -822,16 +800,6 @@
                             <label>止损点数</label>
                             <input type="number" id="autoSl" value="30" step="1">
                             <span class="unit">点</span>
-                        </div>
-                        <div class="auto-config-row">
-                            <label>杠杆倍数</label>
-                            <div class="leverage-selector">
-                                <button type="button" class="lev-btn" data-lev="5">5x</button>
-                                <button type="button" class="lev-btn active" data-lev="10">10x</button>
-                                <button type="button" class="lev-btn" data-lev="20">20x</button>
-                                <button type="button" class="lev-btn" data-lev="50">50x</button>
-                                <button type="button" class="lev-btn" data-lev="100">100x</button>
-                            </div>
                         </div>
 
                         <button class="btn-save-config" onclick="saveAutoConfig()">保存配置</button>
@@ -1267,7 +1235,6 @@
             num_entries: 2,
             tp_points: 50,
             sl_points: 30,
-            leverage: 10,
         };
 
         async function testEMAStrategy(direction) {
@@ -1329,14 +1296,6 @@
             autoConfig.sl_points = parseFloat(e.target.value) || 0;
         });
 
-        document.querySelectorAll('.leverage-selector .lev-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.leverage-selector .lev-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                autoConfig.leverage = parseInt(btn.dataset.lev);
-            });
-        });
-
         async function saveAutoConfig() {
             autoConfig.enabled_tfs = Array.from(document.querySelectorAll('.tf-cb:checked')).map(c => c.value);
             autoConfig.total_amount_usdt = parseFloat(document.getElementById('autoAmount').value) || 100;
@@ -1346,10 +1305,7 @@
             if (activeEntryBtn) {
                 autoConfig.num_entries = parseInt(activeEntryBtn.dataset.entries);
             }
-            const activeLevBtn = document.querySelector('.leverage-selector .lev-btn.active');
-            if (activeLevBtn) {
-                autoConfig.leverage = parseInt(activeLevBtn.dataset.lev);
-            }
+            autoConfig.leverage = leverage;
 
             try {
                 const res = await fetch(API_BASE + '/api/auto/config', {
@@ -1442,10 +1398,6 @@
 
                         document.querySelectorAll('.entry-btn').forEach(b => {
                             b.classList.toggle('active', parseInt(b.dataset.entries) === (s.config.num_entries || 2));
-                        });
-
-                        document.querySelectorAll('.leverage-selector .lev-btn').forEach(b => {
-                            b.classList.toggle('active', parseInt(b.dataset.lev) === (s.config.leverage || 10));
                         });
 
                         if (s.config.enabled_tfs) {
