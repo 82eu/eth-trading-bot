@@ -121,6 +121,40 @@ class AutoTrader:
             logger.error(f"获取{timeframe}K线失败: {e}")
             return None
 
+    def _calc_sl_with_big_tf_check(self, analysis_map, tf, direction, sl_points):
+        """计算止损价，并检查小周期止损是否落在大周期EMA区间内，是则缩减为1/3"""
+        small_analysis = analysis_map.get(tf)
+        if not small_analysis:
+            base = 1600 if direction == "long" else 3600
+            return base - sl_points if direction == "long" else base + sl_points
+
+        sl_price = self.strategy.calc_stop_loss(small_analysis, direction, sl_points)
+        current_price = small_analysis["current_price"]
+
+        tf_order = self.strategy.TIMEFRAMES
+        if tf not in tf_order:
+            return sl_price
+        idx = tf_order.index(tf)
+
+        for i in range(idx + 1, len(tf_order)):
+            big_tf = tf_order[i]
+            big_analysis = analysis_map.get(big_tf)
+            if not big_analysis:
+                continue
+            big_ema_high = big_analysis["ema_high"]
+            big_ema_low = big_analysis["ema_low"]
+            if big_ema_low <= sl_price <= big_ema_high:
+                sl_distance = abs(current_price - sl_price)
+                new_sl_distance = sl_distance / 3
+                if direction == "long":
+                    sl_price = current_price - new_sl_distance
+                else:
+                    sl_price = current_price + new_sl_distance
+                logger.info(f"[{tf}] 止损落在{big_tf}区间内，缩减为1/3: {sl_price:.2f}")
+                break
+
+        return sl_price
+
     def _check_tf_signal(self, tf, analysis_map):
         analysis = analysis_map.get(tf)
         if not analysis:
@@ -128,12 +162,14 @@ class AutoTrader:
 
         in_zone = analysis.get("in_zone", False)
         if not in_zone:
-            if tf in self.opened_positions:
-                del self.opened_positions[tf]
+            position_key_prefix = f"{tf}_"
+            keys_to_remove = [k for k in self.opened_positions if k.startswith(position_key_prefix)]
+            for k in keys_to_remove:
+                del self.opened_positions[k]
             return
 
         trend = self.strategy.get_trend_direction(analysis_map, tf)
-        if not trend:
+        if not trend or trend == "neutral":
             return
 
         position_key = f"{tf}_{trend}"
@@ -144,22 +180,23 @@ class AutoTrader:
         total_amount = self.config.get("total_amount_usdt", 100)
         open_amount = total_amount / num_entries
 
-        entry_points = self.strategy.calc_entry_points(analysis, trend, num_entries)
-        current_price = analysis["price"]
+        entries = self.strategy.calc_entry_levels(analysis, trend, num_entries)
+        current_price = analysis["current_price"]
 
         entry_index = -1
-        for i, point in enumerate(entry_points):
+        for i, entry in enumerate(entries):
+            price = entry["price"]
             if trend == "long":
-                if current_price <= point:
+                if current_price <= price:
                     entry_index = i
             else:
-                if current_price >= point:
+                if current_price >= price:
                     entry_index = i
 
         if entry_index < 0:
             return
 
-        sl_price = self.strategy.calc_stop_loss(analysis_map, tf, trend, self.config["sl_points"])
+        sl_price = self._calc_sl_with_big_tf_check(analysis_map, tf, trend, self.config["sl_points"])
         tp_price = self.strategy.calc_take_profit(analysis, trend, self.config["tp_points"])
 
         self._add_log(f"[{tf}] {trend}信号, 入场{entry_index+1}/{num_entries}, 价格{current_price:.2f}", "signal")
@@ -197,17 +234,18 @@ class AutoTrader:
 
         if direction is None:
             direction = self.strategy.get_trend_direction(analysis_map, timeframe)
-            if not direction:
+            if not direction or direction == "neutral":
                 return False, "无法判断趋势"
 
         total_amount = self.config.get("total_amount_usdt", 100)
         num_entries = self.config.get("num_entries", 1)
         open_amount = total_amount / num_entries
 
-        sl_price = self.strategy.calc_stop_loss(analysis_map, timeframe, direction, self.config["sl_points"])
+        sl_price = self._calc_sl_with_big_tf_check(analysis_map, timeframe, direction, self.config["sl_points"])
         tp_price = self.strategy.calc_take_profit(analysis, direction, self.config["tp_points"])
 
-        self._add_log(f"[测试][{timeframe}] 测试开{direction}, 金额{open_amount}U, 止损{sl_price:.2f}, 止盈{tp_price:.2f}", "signal")
+        current_price = analysis["current_price"]
+        self._add_log(f"[测试][{timeframe}] 开{direction}, 金额{open_amount}U, 价格{current_price:.2f}, 止损{sl_price:.2f}, 止盈{tp_price:.2f}", "signal")
 
         side = "buy" if direction == "long" else "sell"
         order_id = self.client.place_order_usdt(
@@ -223,7 +261,7 @@ class AutoTrader:
             return True, {
                 "direction": direction,
                 "amount": open_amount,
-                "price": analysis["price"],
+                "price": current_price,
                 "stop_loss": sl_price,
                 "take_profit": tp_price,
                 "order_id": order_id,
