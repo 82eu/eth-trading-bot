@@ -243,6 +243,110 @@ class AutoTrader:
         if len(self.signal_log) > 100:
             self.signal_log = self.signal_log[:100]
 
+    def test_open_order(self, tf="5m", force_direction=None):
+        """
+        测试开单 - 手动触发一次EMA策略开单
+        :param tf: 测试哪个周期
+        :param force_direction: 强制方向 long/short，不传则按策略趋势判断
+        :return: {success, msg, ...}
+        """
+        try:
+            candles = self._get_candles(tf)
+            if not candles:
+                return {"success": False, "msg": f"获取{tf}K线失败"}
+
+            analysis = self.strategy.analyze_tf(candles, tf)
+            if not analysis:
+                return {"success": False, "msg": "策略分析失败，K线数据不足"}
+
+            analysis_map = {}
+            for t in self.strategy.TIMEFRAMES:
+                try:
+                    c = self._get_candles(t)
+                    if c:
+                        analysis_map[t] = self.strategy.analyze_tf(c, t)
+                except Exception:
+                    pass
+            if tf not in analysis_map:
+                analysis_map[tf] = analysis
+
+            direction = force_direction or self.strategy.get_trend_direction(analysis_map, tf)
+            if direction == "neutral":
+                return {"success": False, "msg": "无法判断趋势方向"}
+
+            current_price = analysis["current_price"]
+            num_entries = self.config["num_entries"]
+            total_amount = self.config["total_amount_usdt"]
+            tp_points = self.config["tp_points"]
+            sl_points = self.config["sl_points"]
+
+            entries = self.strategy.calc_entry_levels(analysis, direction, num_entries)
+            sl_price = self.strategy.calc_stop_loss(analysis, direction, sl_points, current_price)
+            tp_price = self.strategy.calc_take_profit(analysis, direction, tp_points, current_price)
+
+            tf_order = self.strategy.TIMEFRAMES
+            tf_idx = tf_order.index(tf) if tf in tf_order else 0
+            sl_adjusted = False
+            for i in range(tf_idx + 1, len(tf_order)):
+                big_tf = tf_order[i]
+                if big_tf in analysis_map and analysis_map[big_tf]:
+                    in_big_zone, new_sl = self.strategy.check_small_tf_sl_in_big_zone(
+                        analysis, analysis_map[big_tf], direction, sl_points
+                    )
+                    if in_big_zone:
+                        sl_price = new_sl
+                        sl_adjusted = True
+                        break
+
+            per_entry_amount = total_amount / num_entries
+            open_amount = total_amount
+
+            side = "buy" if direction == "long" else "sell"
+            order_id = self.client.place_order_usdt(
+                self.symbol, side, open_amount,
+                pos_side=direction,
+                stop_loss=sl_price,
+                take_profit=tp_price
+            )
+
+            if order_id:
+                pos = self.positions.get(tf)
+                if pos:
+                    pos["status"] = "open"
+                    pos["direction"] = direction
+                    pos["entries_done"] = num_entries
+                    pos["entry_prices"] = [current_price] * num_entries
+                    pos["stop_loss"] = sl_price
+                    pos["take_profit"] = tp_price
+                    pos["sl_adjusted"] = sl_adjusted
+
+                log_msg = f"[测试][{tf}] 开{direction} {open_amount:.0f}U @ {current_price:.2f}, 止损:{sl_price:.2f}, 止盈:{tp_price:.2f}"
+                if sl_adjusted:
+                    log_msg += " (止损缩1/3)"
+                self._add_log(log_msg, "success" if direction == "long" else "danger")
+                logger.info(log_msg)
+
+                return {
+                    "success": True,
+                    "order_id": order_id,
+                    "tf": tf,
+                    "direction": direction,
+                    "current_price": current_price,
+                    "stop_loss": sl_price,
+                    "take_profit": tp_price,
+                    "amount": open_amount,
+                    "sl_adjusted": sl_adjusted,
+                    "entry_levels": entries,
+                }
+            else:
+                self._add_log(f"[测试][{tf}] 开单失败", "error")
+                return {"success": False, "msg": "开单失败"}
+
+        except Exception as e:
+            logger.error(f"测试开单异常: {e}")
+            self._add_log(f"[测试] 异常: {str(e)}", "error")
+            return {"success": False, "msg": str(e)}
+
     def get_status(self):
         """获取状态"""
         return {

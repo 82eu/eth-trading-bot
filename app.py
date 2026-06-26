@@ -597,6 +597,35 @@ def auto_stop():
     return jsonify({"code": 0, "msg": "自动交易已停止"})
 
 
+@app.route("/api/auto/test", methods=["POST"])
+def auto_test():
+    """
+    测试EMA策略开单
+    手动触发一次策略逻辑，用当前价格和配置开一单测试
+    body: {
+        "tf": "5m",  // 测试哪个周期
+        "direction": "long" | "short"  // 可选，不传则按策略趋势
+    }
+    """
+    at = get_auto_trader()
+    if at is None:
+        return jsonify({"code": 1, "msg": "未初始化"}), 400
+
+    data = request.json or {}
+    tf = data.get("tf", "5m")
+    direction = data.get("direction")
+
+    try:
+        result = at.test_open_order(tf, direction)
+        if result and result.get("success"):
+            return jsonify({"code": 0, "msg": "测试开单成功", "data": result})
+        else:
+            return jsonify({"code": 1, "msg": result.get("msg", "测试开单失败") if result else "开单失败"}), 400
+    except Exception as e:
+        logger.error(f"测试开单异常: {e}")
+        return jsonify({"code": 1, "msg": str(e)}), 500
+
+
 @app.route("/api/auto/config", methods=["POST"])
 def auto_config():
     """更新自动交易配置"""

@@ -29,7 +29,11 @@ class OKXClient:
     def get_balance(self):
         """获取合约账户余额/权益"""
         try:
-            result = self.account.get_account_balance()
+            url = f"{self.base_url}/api/v5/account/balance"
+            params = {"ccy": "USDT"}
+            headers = self._get_auth_headers("GET", "/api/v5/account/balance", "ccy=USDT")
+            resp = requests.get(url, params=params, headers=headers, timeout=10)
+            result = resp.json()
             if result.get("code") == "0":
                 data = result.get("data", [])
                 for item in data:
@@ -43,13 +47,34 @@ class OKXClient:
                 return None
         except Exception as e:
             logger.error(f"获取余额异常: {e}")
-            try:
-                result = self.account.get_balance()
-                if result.get("code") == "0":
-                    return result.get("data", [])
-            except Exception as e2:
-                logger.error(f"备用余额查询也失败: {e2}")
             return None
+
+    def _get_auth_headers(self, method, path, body=""):
+        """生成OKX API认证头"""
+        import hmac
+        import hashlib
+        import base64
+        from datetime import datetime, timezone
+
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        message = timestamp + method.upper() + path
+        if body and method.upper() in ["POST", "PUT"]:
+            message += body if isinstance(body, str) else str(body)
+
+        mac = hmac.new(
+            bytes(self.account.apisecret, encoding="utf8"),
+            bytes(message, encoding="utf-8"),
+            digestmod=hashlib.sha256,
+        )
+        sign = base64.b64encode(mac.digest()).decode()
+
+        return {
+            "OK-ACCESS-KEY": self.account.apikey,
+            "OK-ACCESS-SIGN": sign,
+            "OK-ACCESS-TIMESTAMP": timestamp,
+            "OK-ACCESS-PASSPHRASE": self.account.passphrase,
+            "Content-Type": "application/json",
+        }
 
     def get_ticker(self, symbol):
         """获取交易对行情"""
@@ -128,7 +153,7 @@ class OKXClient:
         logger.info(f"换算: {usdt_amount} USDT @ {price} = {size} 张 (杠杆: {LEVERAGE}x)")
         return size
 
-    def place_order_usdt(self, symbol, side, usdt_amount, order_type="market", price=None, pos_side=None):
+    def place_order_usdt(self, symbol, side, usdt_amount, order_type="market", price=None, pos_side=None, stop_loss=None, take_profit=None):
         """
         用USDT金额下单
         :param symbol: 交易对
@@ -137,6 +162,8 @@ class OKXClient:
         :param order_type: market/limit
         :param price: 限价单价格
         :param pos_side: long/short (默认根据side推断)
+        :param stop_loss: 止损价格
+        :param take_profit: 止盈价格
         """
         ticker = self.get_ticker(symbol)
         if not ticker:
@@ -155,7 +182,16 @@ class OKXClient:
             pos_side = "long" if side == "buy" else "short"
 
         logger.info(f"下单: {side} {usdt_amount}U = {size}张 @ {current_price} ({pos_side})")
-        return self.place_order(symbol, side, size, order_type, price, pos_side)
+        result = self.place_order(symbol, side, size, order_type, price, pos_side)
+
+        # 下单成功后设置止盈止损
+        if result and (stop_loss or take_profit):
+            try:
+                self.set_stop_take_profit(symbol, pos_side, stop_loss, take_profit, current_price)
+            except Exception as e:
+                logger.warning(f"设置止盈止损失败: {e}")
+
+        return result
 
     def place_order(self, symbol, side, size, order_type="market", price=None, pos_side="long"):
         """
@@ -278,3 +314,100 @@ class OKXClient:
         except Exception as e:
             logger.error(f"查询订单异常: {e}")
             return None
+
+    def set_stop_take_profit(self, symbol, pos_side, stop_loss=None, take_profit=None, current_price=None):
+        """
+        设置止盈止损（条件单）
+        :param symbol: 交易对
+        :param pos_side: long/short
+        :param stop_loss: 止损价格
+        :param take_profit: 止盈价格
+        :param current_price: 当前价格（用于计算方向）
+        """
+        try:
+            inst_id = symbol if "-SWAP" in symbol else f"{symbol}-SWAP"
+
+            if stop_loss:
+                self._place_algo_order(inst_id, pos_side, "condition", stop_loss, "stop")
+                logger.info(f"设置止损: {inst_id} {pos_side} @ {stop_loss}")
+
+            if take_profit:
+                self._place_algo_order(inst_id, pos_side, "condition", take_profit, "profit")
+                logger.info(f"设置止盈: {inst_id} {pos_side} @ {take_profit}")
+
+            return True
+        except Exception as e:
+            logger.error(f"设置止盈止损异常: {e}")
+            return False
+
+    def _place_algo_order(self, inst_id, pos_side, algo_type, trigger_price, tp_side):
+        """
+        放置条件单（止盈/止损）
+        :param inst_id: 合约ID
+        :param pos_side: long/short
+        :param algo_type: 条件单类型 condition
+        :param trigger_price: 触发价格
+        :param tp_side: profit/stop
+        """
+        import json
+
+        side = "sell" if pos_side == "long" else "buy"
+
+        body = {
+            "instId": inst_id,
+            "tdMode": "cross",
+            "side": side,
+            "ordType": "market",
+            "sz": "0",
+            "posSide": pos_side,
+            "algoType": algo_type,
+            "triggerPx": str(trigger_price),
+        }
+
+        body_str = json.dumps(body, separators=(',', ':'))
+        headers = self._get_auth_headers("POST", "/api/v5/trade/order-algo", body_str)
+        resp = requests.post(
+            f"{self.base_url}/api/v5/trade/order-algo",
+            data=body_str,
+            headers=headers,
+            timeout=10
+        )
+        result = resp.json()
+        if result.get("code") != "0":
+            logger.warning(f"条件单设置结果: {result}")
+        return result
+
+    def set_leverage(self, symbol, leverage, pos_side="long"):
+        """
+        设置杠杆
+        :param symbol: 交易对
+        :param leverage: 杠杆倍数
+        :param pos_side: long/short
+        """
+        try:
+            import json
+            inst_id = symbol if "-SWAP" in symbol else f"{symbol}-SWAP"
+            body = {
+                "instId": inst_id,
+                "lever": str(leverage),
+                "mgnMode": "cross",
+                "posSide": pos_side
+            }
+            body_str = json.dumps(body, separators=(',', ':'))
+            headers = self._get_auth_headers("POST", "/api/v5/account/set-leverage", body_str)
+            resp = requests.post(
+                f"{self.base_url}/api/v5/account/set-leverage",
+                data=body_str,
+                headers=headers,
+                timeout=10
+            )
+            result = resp.json()
+            if result.get("code") == "0":
+                logger.info(f"设置杠杆成功: {inst_id} {leverage}x {pos_side}")
+                return True
+            else:
+                logger.warning(f"设置杠杆结果: {result}")
+                return False
+        except Exception as e:
+            logger.warning(f"设置杠杆异常: {e}")
+            return False
