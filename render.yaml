@@ -7,14 +7,10 @@ services:
     startCommand: gunicorn app:app
     envVars:
       - key: MOCK_MODE
-        value: "true"
+        value: "false"
       - key: PORT
         value: "10000"
-      - key: OKX_API_KEY
-        sync: false
-      - key: OKX_API_SECRET
-        sync: false
-      - key: OKX_PASSPHRASE
-        sync: false
       - key: SIMULATE
         value: "true"
+      - key: PYTHON_VERSION
+        value: "3.11.7"
