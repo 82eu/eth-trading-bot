@@ -323,7 +323,29 @@ def place_order():
         try:
             from okx_client import OKXClient
             client = OKXClient()
-            order_id = client.place_order_usdt(symbol, side, amount_usdt, order_type, price, pos_side)
+
+            leverage = data.get("leverage")
+            stop_loss = data.get("stop_loss")
+            take_profit = data.get("take_profit")
+
+            if leverage:
+                leverage = int(leverage)
+                trading_status["leverage"] = leverage
+                try:
+                    client.set_leverage(symbol, leverage, "long")
+                    client.set_leverage(symbol, leverage, "short")
+                except Exception as e:
+                    print(f"设置杠杆跳过: {e}")
+
+            if stop_loss:
+                stop_loss = float(stop_loss)
+            if take_profit:
+                take_profit = float(take_profit)
+
+            order_id = client.place_order_usdt(
+                symbol, side, amount_usdt, order_type, price, pos_side,
+                stop_loss=stop_loss, take_profit=take_profit
+            )
             if order_id:
                 return jsonify({"code": 0, "data": {"order_id": order_id}})
             else:
@@ -413,6 +435,70 @@ def close_position():
             return jsonify({"code": 1, "msg": str(e)}), 500
 
 
+@app.route("/api/stop_take_profit", methods=["POST"])
+def set_stop_take_profit():
+    """设置止盈止损"""
+    data = request.json or {}
+    symbol = data.get("symbol", "ETH-USDT-SWAP")
+    stop_loss = data.get("stop_loss")
+    take_profit = data.get("take_profit")
+    pos_side = data.get("pos_side")
+
+    if MOCK_MODE:
+        return jsonify({"code": 0, "msg": "模拟模式止盈止损已设置"})
+    else:
+        try:
+            from okx_client import OKXClient
+            client = OKXClient()
+
+            if not pos_side:
+                positions = client.get_position(symbol)
+                if positions:
+                    for p in positions:
+                        if float(p.get("pos", 0)) != 0:
+                            pos_side = p.get("posSide")
+                            break
+
+            if not pos_side:
+                return jsonify({"code": 1, "msg": "没有持仓，无法设置止盈止损"}), 400
+
+            if stop_loss:
+                stop_loss = float(stop_loss)
+            if take_profit:
+                take_profit = float(take_profit)
+
+            result = client.set_stop_take_profit(symbol, pos_side, stop_loss, take_profit)
+            if result:
+                return jsonify({"code": 0, "msg": "止盈止损设置成功"})
+            else:
+                return jsonify({"code": 1, "msg": "止盈止损设置失败"}), 400
+        except Exception as e:
+            return jsonify({"code": 1, "msg": str(e)}), 500
+
+
+@app.route("/api/set_leverage", methods=["POST"])
+def set_leverage():
+    """设置杠杆"""
+    data = request.json or {}
+    symbol = data.get("symbol", "ETH-USDT-SWAP")
+    leverage = int(data.get("leverage", 10))
+
+    global trading_status
+    trading_status["leverage"] = leverage
+
+    if MOCK_MODE:
+        return jsonify({"code": 0, "msg": f"杠杆已设置为{leverage}x"})
+    else:
+        try:
+            from okx_client import OKXClient
+            client = OKXClient()
+            client.set_leverage(symbol, leverage, "long")
+            client.set_leverage(symbol, leverage, "short")
+            return jsonify({"code": 0, "msg": f"杠杆已设置为{leverage}x", "leverage": leverage})
+        except Exception as e:
+            return jsonify({"code": 1, "msg": str(e)}), 500
+
+
 @app.route("/api/start", methods=["POST"])
 def start_trading():
     """启动交易机器人"""
@@ -427,6 +513,114 @@ def stop_trading():
     global trading_status
     trading_status["running"] = False
     return jsonify({"code": 0, "msg": "交易机器人已停止"})
+
+
+auto_trader_instance = None
+
+
+def get_auto_trader():
+    """获取自动交易器实例"""
+    global auto_trader_instance
+    if auto_trader_instance is None:
+        if not MOCK_MODE:
+            from okx_client import OKXClient
+            from auto_trader import AutoTrader
+            client = OKXClient()
+            auto_trader_instance = AutoTrader(client, trading_status["symbol"])
+        else:
+            auto_trader_instance = None
+    return auto_trader_instance
+
+
+@app.route("/api/auto/status")
+def auto_status():
+    """获取自动交易状态"""
+    at = get_auto_trader()
+    if MOCK_MODE or at is None:
+        from ema_strategy import EMAStrategy
+        strategy = EMAStrategy()
+        analysis = {}
+        for tf in strategy.TIMEFRAMES:
+            analysis[tf] = {
+                "tf": tf,
+                "ema180": 3500,
+                "ema250": 3520,
+                "current_price": 3510,
+                "in_zone": True,
+                "trend": "short",
+                "ema_high": 3520,
+                "ema_low": 3500,
+                "center_price": 3510,
+                "zone_width": 20,
+                "zone_width_pct": 0.57,
+                "is_ranging": False,
+            }
+        return jsonify({
+            "code": 0,
+            "data": {
+                "running": False,
+                "config": {
+                    "enabled_tfs": ["5m", "15m"],
+                    "total_amount_usdt": 100,
+                    "num_entries": 2,
+                    "tp_points": 50,
+                    "sl_points": 30,
+                },
+                "positions": {},
+                "analysis": analysis,
+                "signals": [
+                    {"time": "00:00:00", "message": "模拟模式", "level": "info"}
+                ],
+                "last_check": None,
+            }
+        })
+    return jsonify({"code": 0, "data": at.get_status()})
+
+
+@app.route("/api/auto/start", methods=["POST"])
+def auto_start():
+    """启动自动交易"""
+    at = get_auto_trader()
+    if at is None:
+        return jsonify({"code": 1, "msg": "未初始化"}), 400
+    at.start()
+    return jsonify({"code": 0, "msg": "自动交易已启动"})
+
+
+@app.route("/api/auto/stop", methods=["POST"])
+def auto_stop():
+    """停止自动交易"""
+    at = get_auto_trader()
+    if at is None:
+        return jsonify({"code": 1, "msg": "未初始化"}), 400
+    at.stop()
+    return jsonify({"code": 0, "msg": "自动交易已停止"})
+
+
+@app.route("/api/auto/config", methods=["POST"])
+def auto_config():
+    """更新自动交易配置"""
+    data = request.json or {}
+    at = get_auto_trader()
+
+    config = {}
+    if "enabled_tfs" in data:
+        config["enabled_tfs"] = data["enabled_tfs"]
+    if "total_amount_usdt" in data:
+        config["total_amount_usdt"] = float(data["total_amount_usdt"])
+    if "num_entries" in data:
+        config["num_entries"] = int(data["num_entries"])
+    if "tp_points" in data:
+        config["tp_points"] = float(data["tp_points"])
+    if "sl_points" in data:
+        config["sl_points"] = float(data["sl_points"])
+
+    if at:
+        at.set_config(**config)
+    else:
+        trading_status.update(config)
+
+    return jsonify({"code": 0, "msg": "配置已更新", "config": config})
 
 
 @app.route("/api/health")
