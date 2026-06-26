@@ -1,15 +1,17 @@
 """
 OKX API客户端模块 - 支持USDT金额开单
 """
-from okx import AccountClient, TradingClient, MarketDataClient
+from okx import AccountClient, TradingClient
 from loguru import logger
 from config import API_KEY, API_SECRET, PASSPHRASE, SIMULATE, LEVERAGE
+import requests
 
 
 class OKXClient:
     """OKX交易所客户端"""
 
     def __init__(self):
+        self.base_url = "https://www.okx.com"
         self.account = AccountClient(
             apikey=API_KEY,
             apisecret=API_SECRET,
@@ -22,7 +24,6 @@ class OKXClient:
             passphrase=PASSPHRASE,
             simulation=SIMULATE
         )
-        self.market = MarketDataClient()
         self.simulate = SIMULATE
 
     def get_balance(self):
@@ -47,7 +48,10 @@ class OKXClient:
     def get_ticker(self, symbol):
         """获取交易对行情"""
         try:
-            result = self.market.get_ticker(instId=symbol)
+            url = f"{self.base_url}/api/v5/market/ticker"
+            params = {"instId": symbol}
+            resp = requests.get(url, params=params, timeout=10)
+            result = resp.json()
             if result.get("code") == "0":
                 data = result["data"][0]
                 return {
@@ -74,7 +78,10 @@ class OKXClient:
                 "1d": "1D", "1w": "1W"
             }
             bar = bar_map.get(timeframe, "1H")
-            result = self.market.get_candles(instId=symbol, bar=bar, limit=str(limit))
+            url = f"{self.base_url}/api/v5/market/candles"
+            params = {"instId": symbol, "bar": bar, "limit": str(limit)}
+            resp = requests.get(url, params=params, timeout=10)
+            result = resp.json()
             if result.get("code") == "0":
                 candles = result["data"][::-1]
                 return candles

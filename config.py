@@ -12,7 +12,7 @@ API_SECRET = os.getenv("OKX_API_SECRET", "")
 PASSPHRASE = os.getenv("OKX_PASSPHRASE", "")
 
 # 模拟交易还是实盘
-SIMULATE = os.getenv("SIMULATE", "true").lower() == "true"
+SIMULATE = os.getenv("SIMULATE", "false").lower() == "true"
 
 # 交易参数 - 默认ETH
 SYMBOL = os.getenv("SYMBOL", "ETH-USDT-SWAP")  # 默认ETH永续合约
