@@ -568,8 +568,8 @@ def auto_status():
                 },
                 "positions": {},
                 "analysis": analysis,
-                "signals": [
-                    {"time": "00:00:00", "message": "模拟模式", "level": "info"}
+                "logs": [
+                    {"time": "00:00:00", "msg": "模拟模式", "level": "info"}
                 ],
                 "last_check": None,
             }
