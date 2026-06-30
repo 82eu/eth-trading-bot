@@ -290,18 +290,10 @@ class OKXClient:
                     import time as _time
                     _time.sleep(1.5)
                     try:
-                        sl_result = None
-                        tp_result = None
-                        if stop_loss:
-                            sl_result = self._place_algo_order(inst_id, pos_side, "stop", stop_loss)
-                            logger.info(f"止损设置结果: {sl_result}")
-                        if take_profit:
-                            tp_result = self._place_algo_order(inst_id, pos_side, "profit", take_profit)
-                            logger.info(f"止盈设置结果: {tp_result}")
-                        if sl_result and sl_result.get("code") != "0":
-                            logger.warning(f"止损设置失败: {sl_result}")
-                        if tp_result and tp_result.get("code") != "0":
-                            logger.warning(f"止盈设置失败: {tp_result}")
+                        sl_result = self._place_limit_sl_order(inst_id, pos_side, stop_loss, size) if stop_loss else None
+                        tp_result = self._place_limit_tp_order(inst_id, pos_side, take_profit, size) if take_profit else None
+                        logger.info(f"止损设置结果: {sl_result}")
+                        logger.info(f"止盈设置结果: {tp_result}")
                     except Exception as e:
                         logger.warning(f"设置止盈止损失败: {e}")
 
@@ -375,30 +367,80 @@ class OKXClient:
             return None
 
     def set_stop_take_profit(self, symbol, pos_side, stop_loss=None, take_profit=None, size=None):
-        """设置止盈止损 - 返回详细结果"""
-        results = {"stop_loss": None, "take_profit": None}
+        """设置止盈止损 - 直接用限价单"""
         try:
             inst_id = self._normalize_symbol(symbol)
+            results = {"stop_loss": None, "take_profit": None}
             
+            # 获取持仓数量
+            if size is None:
+                positions = self.get_position(inst_id)
+                for p in positions:
+                    if p.get("posSide") == pos_side and float(p.get("pos", 0)) > 0:
+                        size = float(p["pos"])
+                        break
+            
+            if not size:
+                logger.warning("无法获取持仓数量")
+                return {"error": "无持仓"}
+            
+            # sz 必须是整数
+            sz_int = max(1, int(round(size)))
+            
+            # 做多(long) -> 用sell单平; 做空(short) -> 用buy单平
+            if pos_side == "long":
+                close_side = "sell"
+            else:
+                close_side = "buy"
+            
+            # 设置止损限价单
             if stop_loss:
-                result = self._place_algo_order(inst_id, pos_side, "stop", stop_loss, size)
+                result = self.trade.place_order(
+                    instId=inst_id,
+                    tdMode="cross",
+                    side=close_side,
+                    ordType="limit",
+                    sz=str(sz_int),
+                    px=str(stop_loss),
+                    posSide=pos_side
+                )
                 results["stop_loss"] = result
-                if result.get("code") != "0":
-                    logger.warning(f"止损条件单设置失败，尝试限价单: {result}")
-                    limit_result = self._place_limit_sl_order(inst_id, pos_side, stop_loss, size)
-                    results["stop_loss_limit"] = limit_result
+                if result.get("code") == "0":
+                    logger.info(f"止损限价单设置成功: {close_side} {sz_int}张 @ {stop_loss}")
+                else:
+                    logger.warning(f"止损限价单设置失败: {result}")
+            
+            # 设置止盈限价单
             if take_profit:
-                result = self._place_algo_order(inst_id, pos_side, "profit", take_profit, size)
+                result = self.trade.place_order(
+                    instId=inst_id,
+                    tdMode="cross",
+                    side=close_side,
+                    ordType="limit",
+                    sz=str(sz_int),
+                    px=str(take_profit),
+                    posSide=pos_side
+                )
                 results["take_profit"] = result
-                if result.get("code") != "0":
-                    logger.warning(f"止盈条件单设置失败，尝试限价单: {result}")
-                    limit_result = self._place_limit_tp_order(inst_id, pos_side, take_profit, size)
-                    results["take_profit_limit"] = limit_result
+                if result.get("code") == "0":
+                    logger.info(f"止盈限价单设置成功: {close_side} {sz_int}张 @ {take_profit}")
+                else:
+                    logger.warning(f"止盈限价单设置失败: {result}")
+            
             return results
         except Exception as e:
             logger.error(f"设置止盈止损异常: {e}")
-            results["error"] = str(e)
-            return results
+            return {"error": str(e)}
+
+    def get_algo_orders(self, symbol, state="live"):
+        """获取条件单"""
+        try:
+            inst_id = self._normalize_symbol(symbol)
+            result = self.trade.get_order_algos(instId=inst_id, algoType="tp_sl", state=state)
+            return result
+        except Exception as e:
+            logger.error(f"获取条件单异常: {e}")
+            return {"code": "-1", "msg": str(e)}
 
     def _place_limit_sl_order(self, inst_id, pos_side, stop_price, size=None):
         """用限价单模拟止损（做空平多 或 做多平空）"""

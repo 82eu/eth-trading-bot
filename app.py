@@ -470,12 +470,122 @@ def set_stop_take_profit():
                 take_profit = float(take_profit)
 
             result = client.set_stop_take_profit(symbol, pos_side, stop_loss, take_profit)
-            if result:
-                return jsonify({"code": 0, "msg": "止盈止损设置成功"})
+            
+            sl_ok = result.get("stop_loss", {}).get("code") == "0" or result.get("stop_loss_limit", {}).get("code") == "0"
+            tp_ok = result.get("take_profit", {}).get("code") == "0" or result.get("take_profit_limit", {}).get("code") == "0"
+            
+            if sl_ok or tp_ok:
+                return jsonify({"code": 0, "msg": "止盈止损设置成功", "details": result})
             else:
-                return jsonify({"code": 1, "msg": "止盈止损设置失败"}), 400
+                return jsonify({"code": 1, "msg": "止盈止损设置失败", "details": result}), 400
         except Exception as e:
             return jsonify({"code": 1, "msg": str(e)}), 500
+
+
+@app.route("/api/test_tpsl", methods=["POST"])
+def test_tpsl():
+    """测试止盈止损设置 - 逐步排查问题"""
+    data = request.json or {}
+    symbol = data.get("symbol", "ETH-USDT-SWAP")
+    action = data.get("action")  # open, sl, tp, algo_sl, algo_tp, get_orders, get_positions
+    usdt_amount = data.get("usdt_amount", 10)
+    sl_price = data.get("sl_price")  # 止损价
+    tp_price = data.get("tp_price")  # 止盈价
+    pos_side = data.get("pos_side", "long")
+
+    results = {"action": action, "symbol": symbol}
+
+    if MOCK_MODE:
+        return jsonify({"code": 0, "data": results, "msg": "模拟模式"})
+
+    try:
+        from okx_client import OKXClient
+        client = OKXClient()
+
+        if action == "get_positions":
+            positions = client.get_position(symbol)
+            results["positions"] = positions
+            return jsonify({"code": 0, "data": results})
+
+        if action == "get_orders":
+            orders = client.get_algo_orders(symbol)
+            results["algo_orders"] = orders
+            # 也获取普通挂单
+            try:
+                body = f"instId={symbol}&state=live"
+                headers = client._get_auth_headers("GET", "/api/v5/trade/orders-pending", body)
+                resp = requests.get(
+                    f"{client.base_url}/api/v5/trade/orders-pending?instId={symbol}&state=live",
+                    headers=headers, timeout=10
+                )
+                pending = resp.json()
+                results["pending_orders"] = pending
+            except Exception as e:
+                results["pending_error"] = str(e)
+            return jsonify({"code": 0, "data": results})
+
+        if action == "open":
+            # 测试开单
+            order_id = client.place_order_usdt(symbol, "buy" if pos_side == "long" else "sell", usdt_amount, "market", pos_side=pos_side)
+            results["order_id"] = order_id
+            if order_id:
+                return jsonify({"code": 0, "data": results, "msg": "开单成功"})
+            else:
+                err = getattr(client, 'last_error', '未知错误')
+                results["error"] = err
+                return jsonify({"code": 1, "data": results, "msg": f"开单失败: {err}"}), 400
+
+        if action == "sl":
+            # 测试限价止损单
+            if not sl_price:
+                return jsonify({"code": 1, "msg": "缺少sl_price参数"}), 400
+            result = client._place_limit_sl_order(symbol, pos_side, float(sl_price))
+            results["limit_sl"] = result
+            if result and result.get("code") == "0":
+                return jsonify({"code": 0, "data": results, "msg": "限价止损单成功"})
+            else:
+                return jsonify({"code": 1, "data": results, "msg": f"限价止损单失败: {result}"}), 400
+
+        if action == "tp":
+            # 测试限价止盈单
+            if not tp_price:
+                return jsonify({"code": 1, "msg": "缺少tp_price参数"}), 400
+            result = client._place_limit_tp_order(symbol, pos_side, float(tp_price))
+            results["limit_tp"] = result
+            if result and result.get("code") == "0":
+                return jsonify({"code": 0, "data": results, "msg": "限价止盈单成功"})
+            else:
+                return jsonify({"code": 1, "data": results, "msg": f"限价止盈单失败: {result}"}), 400
+
+        if action == "algo_sl":
+            # 测试条件单止损
+            if not sl_price:
+                return jsonify({"code": 1, "msg": "缺少sl_price参数"}), 400
+            result = client._place_algo_order(symbol, pos_side, "stop", float(sl_price))
+            results["algo_sl"] = result
+            if result and result.get("code") == "0":
+                return jsonify({"code": 0, "data": results, "msg": "条件单止损成功"})
+            else:
+                return jsonify({"code": 1, "data": results, "msg": f"条件单止损失败: {result}"}), 400
+
+        if action == "algo_tp":
+            # 测试条件单止盈
+            if not tp_price:
+                return jsonify({"code": 1, "msg": "缺少tp_price参数"}), 400
+            result = client._place_algo_order(symbol, pos_side, "profit", float(tp_price))
+            results["algo_tp"] = result
+            if result and result.get("code") == "0":
+                return jsonify({"code": 0, "data": results, "msg": "条件单止盈成功"})
+            else:
+                return jsonify({"code": 1, "data": results, "msg": f"条件单止盈失败: {result}"}), 400
+
+        return jsonify({"code": 1, "msg": f"未知action: {action}"}), 400
+
+    except Exception as e:
+        import traceback
+        results["error"] = str(e)
+        results["traceback"] = traceback.format_exc()
+        return jsonify({"code": 1, "data": results, "msg": str(e)}), 500
 
 
 @app.route("/api/set_leverage", methods=["POST"])
