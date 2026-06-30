@@ -677,8 +677,8 @@
                             <button class="tp-sl-quick-btn" onclick="setTpSlPercent(10, 5)">+10% / -5%</button>
                         </div>
                         <div class="trade-buttons">
-                            <button class="btn-long" onclick="openPosition('long')">开多 / 平空</button>
-                            <button class="btn-short" onclick="openPosition('short')">开空 / 平多</button>
+                            <button class="btn-long" onclick="currentDirection='long'; openPosition('long')">开多 / 平空</button>
+                            <button class="btn-short" onclick="currentDirection='short'; openPosition('short')">开空 / 平多</button>
                         </div>
                         <div class="btn-group">
                             <button class="btn btn-danger" onclick="closeAll()">一键全平</button>
@@ -853,6 +853,7 @@
     <script>
         let candleChart = null;
         let currentPrice = 3500;
+        let currentDirection = 'long';
         let leverage = 10;
         let mockMode = true;
 
@@ -919,10 +920,17 @@
 
         function setTpSlPercent(tpPct, slPct) {
             const price = currentPrice;
-            const tpPrice = (price * (1 + tpPct / 100)).toFixed(2);
-            const slPrice = (price * (1 - slPct / 100)).toFixed(2);
-            document.getElementById('takeProfit').value = tpPrice;
-            document.getElementById('stopLoss').value = slPrice;
+            const direction = currentDirection;
+            let tpPrice, slPrice;
+            if (direction === 'long') {
+                tpPrice = price * (1 + tpPct / 100);
+                slPrice = price * (1 - slPct / 100);
+            } else {
+                tpPrice = price * (1 - tpPct / 100);
+                slPrice = price * (1 + slPct / 100);
+            }
+            document.getElementById('takeProfit').value = tpPrice.toFixed(2);
+            document.getElementById('stopLoss').value = slPrice.toFixed(2);
         }
 
         document.addEventListener('DOMContentLoaded', () => {
