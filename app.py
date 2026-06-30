@@ -478,7 +478,7 @@ def set_stop_take_profit():
 
 @app.route("/api/set_leverage", methods=["POST"])
 def set_leverage():
-    """设置杠杆"""
+    """设置杠杆（全局生效，快速开单和自动交易共用）"""
     data = request.json or {}
     symbol = data.get("symbol", "ETH-USDT-SWAP")
     leverage = int(data.get("leverage", 10))
@@ -486,8 +486,12 @@ def set_leverage():
     global trading_status
     trading_status["leverage"] = leverage
 
+    at = get_auto_trader()
+    if at:
+        at.update_config({"leverage": leverage})
+
     if MOCK_MODE:
-        return jsonify({"code": 0, "msg": f"杠杆已设置为{leverage}x"})
+        return jsonify({"code": 0, "msg": f"杠杆已设置为{leverage}x", "leverage": leverage})
     else:
         try:
             from okx_client import OKXClient
@@ -565,6 +569,7 @@ def auto_status():
                     "num_entries": 2,
                     "tp_points": 50,
                     "sl_points": 30,
+                    "leverage": trading_status["leverage"],
                 },
                 "positions": {},
                 "analysis": analysis,
@@ -646,10 +651,20 @@ def auto_config():
     if "leverage" in data:
         config["leverage"] = int(data["leverage"])
 
+    global trading_status
+    if "leverage" in config:
+        trading_status["leverage"] = config["leverage"]
+        if not MOCK_MODE:
+            try:
+                from okx_client import OKXClient
+                client = OKXClient()
+                client.set_leverage(trading_status["symbol"], config["leverage"], "long")
+                client.set_leverage(trading_status["symbol"], config["leverage"], "short")
+            except Exception as e:
+                print(f"设置杠杆失败: {e}")
+
     if at:
         at.update_config(config)
-    else:
-        pass
 
     return jsonify({"code": 0, "msg": "配置已更新", "config": config})
 
