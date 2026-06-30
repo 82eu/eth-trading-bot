@@ -290,10 +290,10 @@ class OKXClient:
                     import time as _time
                     _time.sleep(1.5)
                     try:
-                        sl_result = self._place_limit_sl_order(inst_id, pos_side, stop_loss, size) if stop_loss else None
-                        tp_result = self._place_limit_tp_order(inst_id, pos_side, take_profit, size) if take_profit else None
-                        logger.info(f"止损设置结果: {sl_result}")
-                        logger.info(f"止盈设置结果: {tp_result}")
+                        sl_result = self._place_algo_order(inst_id, pos_side, "stop", stop_loss, size) if stop_loss else None
+                        tp_result = self._place_algo_order(inst_id, pos_side, "profit", take_profit, size) if take_profit else None
+                        logger.info(f"止损条件单设置结果: {sl_result}")
+                        logger.info(f"止盈条件单设置结果: {tp_result}")
                     except Exception as e:
                         logger.warning(f"设置止盈止损失败: {e}")
 
@@ -367,65 +367,26 @@ class OKXClient:
             return None
 
     def set_stop_take_profit(self, symbol, pos_side, stop_loss=None, take_profit=None, size=None):
-        """设置止盈止损 - 直接用限价单"""
+        """设置止盈止损 - 全部用条件单"""
         try:
             inst_id = self._normalize_symbol(symbol)
             results = {"stop_loss": None, "take_profit": None}
             
-            # 获取持仓数量
-            if size is None:
-                positions = self.get_position(inst_id)
-                for p in positions:
-                    if p.get("posSide") == pos_side and float(p.get("pos", 0)) > 0:
-                        size = float(p["pos"])
-                        break
-            
-            if not size:
-                logger.warning("无法获取持仓数量")
-                return {"error": "无持仓"}
-            
-            # sz 必须是整数
-            sz_int = max(1, int(round(size)))
-            
-            # 做多(long) -> 用sell单平; 做空(short) -> 用buy单平
-            if pos_side == "long":
-                close_side = "sell"
-            else:
-                close_side = "buy"
-            
-            # 设置止损限价单
             if stop_loss:
-                result = self.trade.place_order(
-                    instId=inst_id,
-                    tdMode="cross",
-                    side=close_side,
-                    ordType="limit",
-                    sz=str(sz_int),
-                    px=str(stop_loss),
-                    posSide=pos_side
-                )
+                result = self._place_algo_order(inst_id, pos_side, "stop", float(stop_loss), size)
                 results["stop_loss"] = result
                 if result.get("code") == "0":
-                    logger.info(f"止损限价单设置成功: {close_side} {sz_int}张 @ {stop_loss}")
+                    logger.info(f"止损条件单设置成功: {pos_side} @ {stop_loss}")
                 else:
-                    logger.warning(f"止损限价单设置失败: {result}")
+                    logger.warning(f"止损条件单设置失败: {result}")
             
-            # 设置止盈限价单
             if take_profit:
-                result = self.trade.place_order(
-                    instId=inst_id,
-                    tdMode="cross",
-                    side=close_side,
-                    ordType="limit",
-                    sz=str(sz_int),
-                    px=str(take_profit),
-                    posSide=pos_side
-                )
+                result = self._place_algo_order(inst_id, pos_side, "profit", float(take_profit), size)
                 results["take_profit"] = result
                 if result.get("code") == "0":
-                    logger.info(f"止盈限价单设置成功: {close_side} {sz_int}张 @ {take_profit}")
+                    logger.info(f"止盈条件单设置成功: {pos_side} @ {take_profit}")
                 else:
-                    logger.warning(f"止盈限价单设置失败: {result}")
+                    logger.warning(f"止盈条件单设置失败: {result}")
             
             return results
         except Exception as e:
@@ -483,27 +444,33 @@ class OKXClient:
         return self._place_limit_sl_order(inst_id, pos_side, tp_price, size)
 
     def _place_algo_order(self, inst_id, pos_side, ord_type, trigger_price, size=None):
-        """放置条件单（止盈/止损）- 使用SDK"""
+        """放置条件单（止盈/止损）- HTTP直连"""
         side = "sell" if pos_side == "long" else "buy"
         try:
             algo_type = "tp" if ord_type == "profit" else "sl"
-            params = dict(
-                instId=inst_id,
-                tdMode="cross",
-                side=side,
-                ordType="conditional",
-                posSide=pos_side,
-                algoType=algo_type,
-                triggerPx=str(trigger_price),
-                triggerType="1",
-                ordPx="-1",
-            )
+            body_dict = {
+                "instId": inst_id,
+                "tdMode": "cross",
+                "side": side,
+                "ordType": "conditional",
+                "posSide": pos_side,
+                "algoType": algo_type,
+                "triggerPx": str(trigger_price),
+                "triggerType": "1",
+                "ordPx": "-1",
+            }
             if size:
-                params["sz"] = str(size)
+                body_dict["sz"] = str(size)
             else:
-                params["closeFraction"] = "1"
+                body_dict["closeFraction"] = "1"
 
-            result = self.trade.place_order_algo(**params)
+            body = json.dumps(body_dict, separators=(',', ':'))
+            headers = self._get_auth_headers("POST", "/api/v5/trade/order-algo", body)
+            resp = requests.post(
+                f"{self.base_url}/api/v5/trade/order-algo",
+                data=body, headers=headers, timeout=10
+            )
+            result = resp.json()
             if result.get("code") != "0":
                 logger.warning(f"条件单设置失败[{algo_type}]: {result}")
             else:
