@@ -290,10 +290,8 @@ class OKXClient:
                     import time as _time
                     _time.sleep(1.5)
                     try:
-                        sl_result = self._place_algo_order(inst_id, pos_side, "stop", stop_loss, size) if stop_loss else None
-                        tp_result = self._place_algo_order(inst_id, pos_side, "profit", take_profit, size) if take_profit else None
-                        logger.info(f"止损条件单设置结果: {sl_result}")
-                        logger.info(f"止盈条件单设置结果: {tp_result}")
+                        tpsl_result = self.set_stop_take_profit(inst_id, pos_side, stop_loss, take_profit, size)
+                        logger.info(f"止盈止损条件单设置结果: {tpsl_result}")
                     except Exception as e:
                         logger.warning(f"设置止盈止损失败: {e}")
 
@@ -367,87 +365,11 @@ class OKXClient:
             return None
 
     def set_stop_take_profit(self, symbol, pos_side, stop_loss=None, take_profit=None, size=None):
-        """设置止盈止损 - 全部用条件单"""
+        """设置止盈止损 - 条件单（止盈止损放同一个请求里）"""
         try:
             inst_id = self._normalize_symbol(symbol)
-            results = {"stop_loss": None, "take_profit": None}
             
-            if stop_loss:
-                result = self._place_algo_order(inst_id, pos_side, "stop", float(stop_loss), size)
-                results["stop_loss"] = result
-                if result.get("code") == "0":
-                    logger.info(f"止损条件单设置成功: {pos_side} @ {stop_loss}")
-                else:
-                    logger.warning(f"止损条件单设置失败: {result}")
-            
-            if take_profit:
-                result = self._place_algo_order(inst_id, pos_side, "profit", float(take_profit), size)
-                results["take_profit"] = result
-                if result.get("code") == "0":
-                    logger.info(f"止盈条件单设置成功: {pos_side} @ {take_profit}")
-                else:
-                    logger.warning(f"止盈条件单设置失败: {result}")
-            
-            return results
-        except Exception as e:
-            logger.error(f"设置止盈止损异常: {e}")
-            return {"error": str(e)}
-
-    def get_algo_orders(self, symbol, state="live"):
-        """获取条件单"""
-        try:
-            inst_id = self._normalize_symbol(symbol)
-            result = self.trade.get_order_algos(instId=inst_id, algoType="tp_sl", state=state)
-            return result
-        except Exception as e:
-            logger.error(f"获取条件单异常: {e}")
-            return {"code": "-1", "msg": str(e)}
-
-    def _place_limit_sl_order(self, inst_id, pos_side, stop_price, size=None):
-        """用限价单模拟止损（做空平多 或 做多平空）"""
-        side = "sell" if pos_side == "long" else "buy"
-        try:
-            if size is None:
-                positions = self.get_position(inst_id)
-                for p in positions:
-                    if p.get("posSide") == pos_side and float(p.get("pos", 0)) > 0:
-                        size = float(p["pos"])
-                        break
-            
-            if not size:
-                logger.warning("无法获取持仓数量，跳过限价止损")
-                return None
-            
-            # sz 必须是整数，至少1张
-            sz_int = max(1, int(round(size)))
-                
-            result = self.trade.place_order(
-                instId=inst_id,
-                tdMode="cross",
-                side=side,
-                ordType="limit",
-                sz=str(sz_int),
-                px=str(stop_price),
-                posSide=pos_side
-            )
-            if result.get("code") == "0":
-                logger.info(f"限价止损单设置成功: {side} {sz_int}张 @ {stop_price}")
-            else:
-                logger.warning(f"限价止损单设置失败: {result}")
-            return result
-        except Exception as e:
-            logger.error(f"限价止损单异常: {e}")
-            return None
-
-    def _place_limit_tp_order(self, inst_id, pos_side, tp_price, size=None):
-        """用限价单模拟止盈"""
-        return self._place_limit_sl_order(inst_id, pos_side, tp_price, size)
-
-    def _place_algo_order(self, inst_id, pos_side, ord_type, trigger_price, size=None):
-        """放置条件单（止盈/止损）- HTTP直连"""
-        side = "sell" if pos_side == "long" else "buy"
-        try:
-            is_tp = ord_type == "profit"
+            side = "sell" if pos_side == "long" else "buy"
             body_dict = {
                 "instId": inst_id,
                 "tdMode": "cross",
@@ -461,11 +383,11 @@ class OKXClient:
             else:
                 body_dict["closeFraction"] = "1"
 
-            if is_tp:
-                body_dict["tpTriggerPx"] = str(trigger_price)
+            if take_profit:
+                body_dict["tpTriggerPx"] = str(take_profit)
                 body_dict["tpOrdPx"] = "-1"
-            else:
-                body_dict["slTriggerPx"] = str(trigger_price)
+            if stop_loss:
+                body_dict["slTriggerPx"] = str(stop_loss)
                 body_dict["slOrdPx"] = "-1"
 
             body = json.dumps(body_dict, separators=(',', ':'))
@@ -475,11 +397,23 @@ class OKXClient:
                 data=body, headers=headers, timeout=10
             )
             result = resp.json()
-            if result.get("code") != "0":
-                logger.warning(f"条件单设置失败[{'tp' if is_tp else 'sl'}]: {result}")
+            
+            if result.get("code") == "0":
+                logger.info(f"止盈止损条件单设置成功: {pos_side} TP={take_profit} SL={stop_loss}")
             else:
-                logger.info(f"条件单设置成功[{'tp' if is_tp else 'sl'}]: {trigger_price}")
+                logger.warning(f"止盈止损条件单设置失败: {result}")
+            
             return result
         except Exception as e:
-            logger.error(f"条件单设置异常[{ord_type}]: {e}")
+            logger.error(f"设置止盈止损异常: {e}")
+            return {"code": "-1", "msg": str(e)}
+
+    def get_algo_orders(self, symbol, state="live"):
+        """获取条件单"""
+        try:
+            inst_id = self._normalize_symbol(symbol)
+            result = self.trade.get_order_algos(instId=inst_id, algoType="tp_sl", state=state)
+            return result
+        except Exception as e:
+            logger.error(f"获取条件单异常: {e}")
             return {"code": "-1", "msg": str(e)}

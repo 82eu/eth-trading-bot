@@ -471,10 +471,7 @@ def set_stop_take_profit():
 
             result = client.set_stop_take_profit(symbol, pos_side, stop_loss, take_profit)
             
-            sl_ok = result.get("stop_loss", {}).get("code") == "0" or result.get("stop_loss_limit", {}).get("code") == "0"
-            tp_ok = result.get("take_profit", {}).get("code") == "0" or result.get("take_profit_limit", {}).get("code") == "0"
-            
-            if sl_ok or tp_ok:
+            if result.get("code") == "0":
                 return jsonify({"code": 0, "msg": "止盈止损设置成功", "details": result})
             else:
                 return jsonify({"code": 1, "msg": "止盈止损设置失败", "details": result}), 400
@@ -487,7 +484,7 @@ def test_tpsl():
     """测试止盈止损设置 - 逐步排查问题"""
     data = request.json or {}
     symbol = data.get("symbol", "ETH-USDT-SWAP")
-    action = data.get("action")  # open, sl, tp, algo_sl, algo_tp, get_orders, get_positions
+    action = data.get("action")  # open, algo_tpsl, get_orders, get_positions
     usdt_amount = data.get("usdt_amount", 10)
     sl_price = data.get("sl_price")  # 止损价
     tp_price = data.get("tp_price")  # 止盈价
@@ -535,49 +532,16 @@ def test_tpsl():
                 results["error"] = err
                 return jsonify({"code": 1, "data": results, "msg": f"开单失败: {err}"}), 400
 
-        if action == "sl":
-            # 测试限价止损单
-            if not sl_price:
-                return jsonify({"code": 1, "msg": "缺少sl_price参数"}), 400
-            result = client._place_limit_sl_order(symbol, pos_side, float(sl_price))
-            results["limit_sl"] = result
+        if action == "algo_tpsl":
+            # 测试条件单止盈止损（同时设置）
+            if not sl_price and not tp_price:
+                return jsonify({"code": 1, "msg": "缺少sl_price或tp_price参数"}), 400
+            result = client.set_stop_take_profit(symbol, pos_side, sl_price, tp_price)
+            results["algo_tpsl"] = result
             if result and result.get("code") == "0":
-                return jsonify({"code": 0, "data": results, "msg": "限价止损单成功"})
+                return jsonify({"code": 0, "data": results, "msg": "条件单止盈止损成功"})
             else:
-                return jsonify({"code": 1, "data": results, "msg": f"限价止损单失败: {result}"}), 400
-
-        if action == "tp":
-            # 测试限价止盈单
-            if not tp_price:
-                return jsonify({"code": 1, "msg": "缺少tp_price参数"}), 400
-            result = client._place_limit_tp_order(symbol, pos_side, float(tp_price))
-            results["limit_tp"] = result
-            if result and result.get("code") == "0":
-                return jsonify({"code": 0, "data": results, "msg": "限价止盈单成功"})
-            else:
-                return jsonify({"code": 1, "data": results, "msg": f"限价止盈单失败: {result}"}), 400
-
-        if action == "algo_sl":
-            # 测试条件单止损
-            if not sl_price:
-                return jsonify({"code": 1, "msg": "缺少sl_price参数"}), 400
-            result = client._place_algo_order(symbol, pos_side, "stop", float(sl_price))
-            results["algo_sl"] = result
-            if result and result.get("code") == "0":
-                return jsonify({"code": 0, "data": results, "msg": "条件单止损成功"})
-            else:
-                return jsonify({"code": 1, "data": results, "msg": f"条件单止损失败: {result}"}), 400
-
-        if action == "algo_tp":
-            # 测试条件单止盈
-            if not tp_price:
-                return jsonify({"code": 1, "msg": "缺少tp_price参数"}), 400
-            result = client._place_algo_order(symbol, pos_side, "profit", float(tp_price))
-            results["algo_tp"] = result
-            if result and result.get("code") == "0":
-                return jsonify({"code": 0, "data": results, "msg": "条件单止盈成功"})
-            else:
-                return jsonify({"code": 1, "data": results, "msg": f"条件单止盈失败: {result}"}), 400
+                return jsonify({"code": 1, "data": results, "msg": f"条件单止盈止损失败: {result}"}), 400
 
         return jsonify({"code": 1, "msg": f"未知action: {action}"}), 400
 
