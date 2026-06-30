@@ -379,32 +379,30 @@ class OKXClient:
             return False
 
     def _place_algo_order(self, inst_id, pos_side, ord_type, trigger_price, size=None):
-        """放置条件单（止盈/止损）"""
+        """放置条件单（止盈/止损）- 使用SDK"""
         side = "sell" if pos_side == "long" else "buy"
-        body_dict = {
-            "instId": inst_id,
-            "tdMode": "cross",
-            "side": side,
-            "ordType": ord_type,
-            "posSide": pos_side,
-            "triggerPx": str(trigger_price),
-            "triggerType": "1",
-        }
-        if size:
-            body_dict["sz"] = str(size)
-        else:
-            body_dict["closeFraction"] = "1"
+        try:
+            params = dict(
+                instId=inst_id,
+                tdMode="cross",
+                side=side,
+                ordType=ord_type,
+                posSide=pos_side,
+                triggerPx=str(trigger_price),
+                triggerType="1",
+                ordPx="-1",
+            )
+            if size:
+                params["sz"] = str(size)
+            else:
+                params["closeFraction"] = "1"
 
-        body = json.dumps(body_dict, separators=(',', ':'))
-
-        headers = self._get_auth_headers("POST", "/api/v5/trade/order-algo", body)
-        resp = requests.post(
-            f"{self.base_url}/api/v5/trade/order-algo",
-            data=body, headers=headers, timeout=10
-        )
-        result = resp.json()
-        if result.get("code") != "0":
-            logger.warning(f"条件单设置失败[{ord_type}]: {result}")
-        else:
-            logger.info(f"条件单设置成功[{ord_type}]: {trigger_price}")
-        return result
+            result = self.trade.place_order_algo(**params)
+            if result.get("code") != "0":
+                logger.warning(f"条件单设置失败[{ord_type}]: {result}")
+            else:
+                logger.info(f"条件单设置成功[{ord_type}]: {trigger_price}")
+            return result
+        except Exception as e:
+            logger.error(f"条件单设置异常[{ord_type}]: {e}")
+            return {"code": "-1", "msg": str(e)}
