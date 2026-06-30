@@ -447,22 +447,25 @@ class OKXClient:
         """放置条件单（止盈/止损）- HTTP直连"""
         side = "sell" if pos_side == "long" else "buy"
         try:
-            algo_type = "tp" if ord_type == "profit" else "sl"
+            is_tp = ord_type == "profit"
             body_dict = {
                 "instId": inst_id,
                 "tdMode": "cross",
                 "side": side,
-                "ordType": "conditional",
                 "posSide": pos_side,
-                "algoType": algo_type,
-                "triggerPx": str(trigger_price),
                 "triggerType": "1",
-                "ordPx": "-1",
             }
             if size:
                 body_dict["sz"] = str(size)
             else:
                 body_dict["closeFraction"] = "1"
+
+            if is_tp:
+                body_dict["tpTriggerPx"] = str(trigger_price)
+                body_dict["tpOrdPx"] = "-1"
+            else:
+                body_dict["slTriggerPx"] = str(trigger_price)
+                body_dict["slOrdPx"] = "-1"
 
             body = json.dumps(body_dict, separators=(',', ':'))
             headers = self._get_auth_headers("POST", "/api/v5/trade/order-algo", body)
@@ -472,9 +475,9 @@ class OKXClient:
             )
             result = resp.json()
             if result.get("code") != "0":
-                logger.warning(f"条件单设置失败[{algo_type}]: {result}")
+                logger.warning(f"条件单设置失败[{'tp' if is_tp else 'sl'}]: {result}")
             else:
-                logger.info(f"条件单设置成功[{algo_type}]: {trigger_price}")
+                logger.info(f"条件单设置成功[{'tp' if is_tp else 'sl'}]: {trigger_price}")
             return result
         except Exception as e:
             logger.error(f"条件单设置异常[{ord_type}]: {e}")
