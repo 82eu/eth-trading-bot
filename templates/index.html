@@ -832,6 +832,30 @@
                 </div>
 
                 <div class="panel-card">
+                    <div class="panel-title">🧪 止盈止损测试</div>
+                    <div style="padding: 10px;">
+                        <div class="config-row" style="margin-bottom: 10px;">
+                            <label style="width: 80px;">止损价</label>
+                            <input type="number" id="testSlPrice" placeholder="止损价" style="flex:1; padding:5px;">
+                        </div>
+                        <div class="config-row" style="margin-bottom: 10px;">
+                            <label style="width: 80px;">止盈价</label>
+                            <input type="number" id="testTpPrice" placeholder="止盈价" style="flex:1; padding:5px;">
+                        </div>
+                        <div style="display: flex; gap: 5px; flex-wrap: wrap;">
+                            <button class="btn" style="font-size:12px;" onclick="testTpsl('get_positions')">查持仓</button>
+                            <button class="btn" style="font-size:12px;" onclick="testTpsl('get_orders')">查挂单</button>
+                            <button class="btn btn-success" style="font-size:12px;" onclick="testTpsl('open')">开单</button>
+                            <button class="btn btn-danger" style="font-size:12px;" onclick="testTpsl('sl')">限价止损</button>
+                            <button class="btn btn-success" style="font-size:12px;" onclick="testTpsl('tp')">限价止盈</button>
+                            <button class="btn" style="font-size:12px;" onclick="testTpsl('algo_sl')">条件止损</button>
+                            <button class="btn" style="font-size:12px;" onclick="testTpsl('algo_tp')">条件止盈</button>
+                        </div>
+                        <div id="testResult" style="margin-top:10px; font-size:12px; max-height:200px; overflow:auto; background:#f5f5f5; padding:8px; border-radius:4px;"></div>
+                    </div>
+                </div>
+
+                <div class="panel-card">
                     <div class="panel-title">📝 信号日志</div>
                     <div class="signal-log" id="signalLog">
                         <div class="loading">加载中...</div>
@@ -931,6 +955,40 @@
             }
             document.getElementById('takeProfit').value = tpPrice.toFixed(2);
             document.getElementById('stopLoss').value = slPrice.toFixed(2);
+        }
+
+        async function testTpsl(action) {
+            const slPrice = document.getElementById('testSlPrice').value;
+            const tpPrice = document.getElementById('testTpPrice').value;
+            const resultDiv = document.getElementById('testResult');
+            resultDiv.innerHTML = '<div style="color:#666;">执行中...</div>';
+
+            try {
+                const body = {
+                    action: action,
+                    symbol: 'ETH-USDT-SWAP',
+                    pos_side: currentDirection || 'long'
+                };
+                if (slPrice) body.sl_price = parseFloat(slPrice);
+                if (tpPrice) body.tp_price = parseFloat(tpPrice);
+
+                const res = await fetch(API_BASE + '/api/test_tpsl', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+
+                if (data.code === 0) {
+                    resultDiv.innerHTML = `<div style="color:green;">✅ ${data.msg}</div>
+                        <pre style="margin:10px 0; font-size:11px; white-space:pre-wrap;">${JSON.stringify(data.data, null, 2)}</pre>`;
+                } else {
+                    resultDiv.innerHTML = `<div style="color:red;">❌ ${data.msg}</div>
+                        <pre style="margin:10px 0; font-size:11px; white-space:pre-wrap; color:#c00;">${JSON.stringify(data.data, null, 2)}</pre>`;
+                }
+            } catch (e) {
+                resultDiv.innerHTML = `<div style="color:red;">❌ 错误: ${e.message}</div>`;
+            }
         }
 
         document.addEventListener('DOMContentLoaded', () => {
