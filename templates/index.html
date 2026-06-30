@@ -725,6 +725,17 @@
                         </div>
 
                         <div class="auto-config-section">
+                            <div class="config-label">杠杆</div>
+                            <div class="lev-btns auto-lev-btns">
+                                <button class="lev-btn auto-lev-btn" data-lev="5">5x</button>
+                                <button class="lev-btn auto-lev-btn" data-lev="10">10x</button>
+                                <button class="lev-btn auto-lev-btn" data-lev="20">20x</button>
+                                <button class="lev-btn auto-lev-btn" data-lev="50">50x</button>
+                                <button class="lev-btn auto-lev-btn" data-lev="100">100x</button>
+                            </div>
+                        </div>
+
+                        <div class="auto-config-section">
                             <div class="config-label">启用周期</div>
                             <div class="tf-selector">
                                 <label class="tf-check"><input type="checkbox" value="5m" class="tf-cb" checked> 5m</label>
@@ -875,7 +886,7 @@
             document.getElementById('calcMargin').textContent = margin.toFixed(2);
         }
 
-        function setLeverage(lev) {
+        function setLeverage(lev, saveToAuto = true) {
             leverage = lev;
             document.querySelectorAll('.lev-btn').forEach(b => {
                 b.classList.toggle('active', parseInt(b.dataset.lev) === lev);
@@ -883,6 +894,9 @@
             updateCalc();
             const cfgLev = document.getElementById('cfgLeverage');
             if (cfgLev) cfgLev.textContent = lev + 'x';
+            if (saveToAuto) {
+                autoConfig.leverage = lev;
+            }
             fetch(API_BASE + '/api/set_leverage', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -916,6 +930,16 @@
                 btn.addEventListener('click', () => setLeverage(parseInt(btn.dataset.lev)));
             });
         });
+
+        function updateLeverageUI(lev) {
+            leverage = lev;
+            document.querySelectorAll('.lev-btn').forEach(b => {
+                b.classList.toggle('active', parseInt(b.dataset.lev) === lev);
+            });
+            updateCalc();
+            const cfgLev = document.getElementById('cfgLeverage');
+            if (cfgLev) cfgLev.textContent = lev + 'x';
+        }
 
         async function fetchHealth() {
             try {
@@ -1408,6 +1432,10 @@
 
                     if (s.config) {
                         autoConfig = { ...autoConfig, ...s.config };
+
+                        if (s.config.leverage && s.config.leverage !== leverage) {
+                            updateLeverageUI(s.config.leverage);
+                        }
 
                         if (!autoConfigEditing) {
                             const amountInput = document.getElementById('autoAmount');
