@@ -282,7 +282,19 @@ class AutoTrader:
                 "order_id": order_id,
             }
         else:
-            msg = "开单失败（交易所返回错误，请看日志）"
+            balance = self.client.get_balance()
+            avail_eq = 0
+            if balance:
+                for item in balance:
+                    for d in item.get("details", []):
+                        if d.get("ccy") == "USDT":
+                            avail_eq = float(d.get("availEq", "0"))
+                            break
+            margin_needed = open_amount / leverage
+            if avail_eq > 0 and avail_eq < margin_needed:
+                msg = f"余额不足: 可用 {avail_eq:.2f} USDT, 需要保证金 {margin_needed:.2f} USDT ({open_amount:.2f}U合约价值 × {leverage}x杠杆)"
+            else:
+                msg = "开单失败（交易所返回错误，请看日志）"
             self._add_log(f"[测试][{timeframe}] {msg}", "error")
             return False, msg
 

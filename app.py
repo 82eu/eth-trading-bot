@@ -284,7 +284,7 @@ def place_order():
 
     if MOCK_MODE:
         current_price = trading_status["current_price"]
-        size = round(amount_usdt * trading_status["leverage"] / current_price, 3)
+        size = round(amount_usdt / current_price, 3)
 
         order_id = f"mock_{int(datetime.now().timestamp())}"
 

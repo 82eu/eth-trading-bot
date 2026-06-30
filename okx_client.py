@@ -179,7 +179,9 @@ class OKXClient:
             return False
 
     def usdt_to_size(self, symbol, usdt_amount, price=None, leverage=None):
-        """USDT金额转合约张数"""
+        """USDT金额转合约张数
+        usdt_amount: 合约价值（用户输入的金额就是要开的仓位大小）
+        """
         if price is None:
             ticker = self.get_ticker(symbol)
             if not ticker:
@@ -187,7 +189,7 @@ class OKXClient:
             price = ticker["last"]
 
         lev = leverage if leverage else LEVERAGE
-        size = (usdt_amount * lev) / price
+        size = usdt_amount / price
 
         if "BTC" in symbol:
             size = round(size, 3)
@@ -196,7 +198,8 @@ class OKXClient:
         else:
             size = round(size, 2)
 
-        logger.info(f"换算: {usdt_amount} USDT @ {price} = {size} 张 (杠杆: {lev}x)")
+        margin = usdt_amount / lev
+        logger.info(f"换算: {usdt_amount} USDT合约价值 @ {price} = {size} 张, 保证金: {margin:.2f}U (杠杆: {lev}x)")
         return size
 
     def place_order_usdt(self, symbol, side, usdt_amount, order_type="market",
@@ -215,6 +218,19 @@ class OKXClient:
             logger.error(f"计算张数失败: {size}")
             return None
 
+        balance = self.get_balance()
+        if balance:
+            avail_eq = 0
+            for item in balance:
+                for d in item.get("details", []):
+                    if d.get("ccy") == "USDT":
+                        avail_eq = float(d.get("availEq", "0"))
+                        break
+            margin_needed = usdt_amount / lev
+            if avail_eq < margin_needed:
+                logger.error(f"余额不足: 可用 {avail_eq:.2f} USDT, 需要保证金 {margin_needed:.2f} USDT ({usdt_amount:.2f}U合约价值 × {lev}x杠杆)")
+                return None
+
         if pos_side is None:
             pos_side = "long" if side == "buy" else "short"
 
@@ -222,6 +238,8 @@ class OKXClient:
         order_id = self.place_order(symbol, side, size, order_type, price, pos_side, lev)
 
         if order_id and (stop_loss or take_profit):
+            import time as _time
+            _time.sleep(0.5)
             try:
                 self.set_stop_take_profit(symbol, pos_side, stop_loss, take_profit)
             except Exception as e:
@@ -346,6 +364,7 @@ class OKXClient:
             "ordType": ord_type,
             "posSide": pos_side,
             "triggerPx": str(trigger_price),
+            "triggerType": "1",
         }
         if size:
             body_dict["sz"] = str(size)
@@ -361,5 +380,7 @@ class OKXClient:
         )
         result = resp.json()
         if result.get("code") != "0":
-            logger.warning(f"条件单设置结果: {result}")
+            logger.warning(f"条件单设置失败[{ord_type}]: {result}")
+        else:
+            logger.info(f"条件单设置成功[{ord_type}]: {trigger_price}")
         return result
