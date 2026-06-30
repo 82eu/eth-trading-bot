@@ -181,6 +181,7 @@ class OKXClient:
     def usdt_to_size(self, symbol, usdt_amount, price=None, leverage=None):
         """USDT金额转合约张数
         usdt_amount: 合约价值（用户输入的金额就是要开的仓位大小）
+        OKX合约面值: ETH=0.1ETH/张, BTC=0.01BTC/张
         """
         if price is None:
             ticker = self.get_ticker(symbol)
@@ -189,17 +190,20 @@ class OKXClient:
             price = ticker["last"]
 
         lev = leverage if leverage else LEVERAGE
-        size = usdt_amount / price
+        eth_amount = usdt_amount / price
 
         if "BTC" in symbol:
-            size = round(size, 3)
+            contract_size = 0.01
+            size = round(eth_amount / contract_size, 3)
         elif "ETH" in symbol:
-            size = round(size, 2)
+            contract_size = 0.1
+            size = round(eth_amount / contract_size, 2)
         else:
-            size = round(size, 2)
+            contract_size = 0.1
+            size = round(eth_amount / contract_size, 2)
 
         margin = usdt_amount / lev
-        logger.info(f"换算: {usdt_amount} USDT合约价值 @ {price} = {size} 张, 保证金: {margin:.2f}U (杠杆: {lev}x)")
+        logger.info(f"换算: {usdt_amount} USDT合约价值 = {eth_amount:.6f} ETH = {size} 张, 保证金: {margin:.2f}U (杠杆: {lev}x, 面值: {contract_size})")
         return size
 
     def place_order_usdt(self, symbol, side, usdt_amount, order_type="market",
