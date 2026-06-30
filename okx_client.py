@@ -375,27 +375,30 @@ class OKXClient:
             return None
 
     def set_stop_take_profit(self, symbol, pos_side, stop_loss=None, take_profit=None, size=None):
-        """设置止盈止损 - 尝试两种方式"""
+        """设置止盈止损 - 返回详细结果"""
+        results = {"stop_loss": None, "take_profit": None}
         try:
             inst_id = self._normalize_symbol(symbol)
             
-            # 先试试条件单方式
             if stop_loss:
                 result = self._place_algo_order(inst_id, pos_side, "stop", stop_loss, size)
+                results["stop_loss"] = result
                 if result.get("code") != "0":
                     logger.warning(f"止损条件单设置失败，尝试限价单: {result}")
-                    # 备用方案：用限价单止损
-                    self._place_limit_sl_order(inst_id, pos_side, stop_loss, size)
+                    limit_result = self._place_limit_sl_order(inst_id, pos_side, stop_loss, size)
+                    results["stop_loss_limit"] = limit_result
             if take_profit:
                 result = self._place_algo_order(inst_id, pos_side, "profit", take_profit, size)
+                results["take_profit"] = result
                 if result.get("code") != "0":
                     logger.warning(f"止盈条件单设置失败，尝试限价单: {result}")
-                    # 备用方案：用限价单止盈
-                    self._place_limit_tp_order(inst_id, pos_side, take_profit, size)
-            return True
+                    limit_result = self._place_limit_tp_order(inst_id, pos_side, take_profit, size)
+                    results["take_profit_limit"] = limit_result
+            return results
         except Exception as e:
             logger.error(f"设置止盈止损异常: {e}")
-            return False
+            results["error"] = str(e)
+            return results
 
     def _place_limit_sl_order(self, inst_id, pos_side, stop_price, size=None):
         """用限价单模拟止损（做空平多 或 做多平空）"""
