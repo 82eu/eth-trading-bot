@@ -224,37 +224,52 @@ class AutoTrader:
     def test_open_order(self, timeframe, direction=None):
         candles = self._get_candles(timeframe)
         if not candles:
-            return False, f"获取{timeframe}K线失败"
+            msg = f"获取{timeframe}K线失败"
+            logger.error(msg)
+            self._add_log(f"[测试][{timeframe}] {msg}", "error")
+            return False, msg
 
         analysis = self.strategy.analyze_tf(candles, timeframe)
         if not analysis:
-            return False, "策略分析失败"
+            msg = "策略分析失败"
+            logger.error(msg)
+            self._add_log(f"[测试][{timeframe}] {msg}", "error")
+            return False, msg
 
         analysis_map = self.refresh_analysis() or {timeframe: analysis}
 
         if direction is None:
             direction = self.strategy.get_trend_direction(analysis_map, timeframe)
             if not direction or direction == "neutral":
-                return False, "无法判断趋势"
+                msg = "无法判断趋势"
+                self._add_log(f"[测试][{timeframe}] {msg}", "error")
+                return False, msg
 
         total_amount = self.config.get("total_amount_usdt", 100)
-        num_entries = self.config.get("num_entries", 1)
-        open_amount = total_amount / num_entries
+        open_amount = total_amount
 
         sl_price = self._calc_sl_with_big_tf_check(analysis_map, timeframe, direction, self.config["sl_points"])
         tp_price = self.strategy.calc_take_profit(analysis, direction, self.config["tp_points"])
 
         current_price = analysis["current_price"]
+        leverage = self.config.get("leverage", 10)
+        logger.info(f"[测试][{timeframe}] 开{direction}, 金额{open_amount}U, 杠杆{leverage}x, 价格{current_price:.2f}, 止损{sl_price:.2f}, 止盈{tp_price:.2f}")
         self._add_log(f"[测试][{timeframe}] 开{direction}, 金额{open_amount}U, 价格{current_price:.2f}, 止损{sl_price:.2f}, 止盈{tp_price:.2f}", "signal")
 
         side = "buy" if direction == "long" else "sell"
-        order_id = self.client.place_order_usdt(
-            self.symbol, side, open_amount,
-            pos_side=direction,
-            stop_loss=sl_price,
-            take_profit=tp_price,
-            leverage=self.config["leverage"],
-        )
+        try:
+            order_id = self.client.place_order_usdt(
+                self.symbol, side, open_amount,
+                pos_side=direction,
+                stop_loss=sl_price,
+                take_profit=tp_price,
+                leverage=leverage,
+            )
+        except Exception as e:
+            msg = f"下单异常: {e}"
+            logger.error(f"[测试][{timeframe}] {msg}")
+            self._add_log(f"[测试][{timeframe}] {msg}", "error")
+            return False, msg
 
         if order_id:
             self._add_log(f"[测试][{timeframe}] 开{direction}成功 {open_amount}U", "success")
@@ -267,8 +282,9 @@ class AutoTrader:
                 "order_id": order_id,
             }
         else:
-            self._add_log(f"[测试][{timeframe}] 开单失败", "error")
-            return False, "开单失败"
+            msg = "开单失败（交易所返回错误，请看日志）"
+            self._add_log(f"[测试][{timeframe}] {msg}", "error")
+            return False, msg
 
     def _add_log(self, msg, level="info"):
         self.signal_logs.append({
