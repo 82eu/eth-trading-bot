@@ -1,0 +1,1514 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OKX ETH 合约交易</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1419;
+            color: #e7e9ea;
+            min-height: 100vh;
+        }
+        .header {
+            background: #1a1f2e;
+            padding: 16px 24px;
+            border-bottom: 1px solid #2d3748;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .header h1 {
+            font-size: 20px;
+            background: linear-gradient(135deg, #627eea, #8b5cf6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .header-left { display: flex; align-items: center; gap: 16px; }
+        .header-right { display: flex; align-items: center; gap: 12px; }
+        .mode-badge {
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .mode-badge.mock { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
+        .mode-badge.real { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            background: rgba(34, 197, 94, 0.15);
+            color: #22c55e;
+            font-size: 13px;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #22c55e;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: #1a1f2e;
+            border: 1px solid #2d3748;
+            border-radius: 12px;
+            padding: 14px 18px;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+        .stat-card:hover { transform: translateY(-2px); border-color: #627eea; }
+        .stat-card .label { font-size: 12px; color: #718096; margin-bottom: 4px; }
+        .stat-card .value { font-size: 22px; font-weight: 600; }
+        .stat-card .value.positive { color: #22c55e; }
+        .stat-card .value.negative { color: #ef4444; }
+        .stat-card .sub { font-size: 11px; color: #718096; margin-top: 2px; }
+        .main-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        @media (max-width: 1024px) { .main-grid { grid-template-columns: 1fr; } }
+        .chart-container {
+            background: #1a1f2e;
+            border: 1px solid #2d3748;
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .chart-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .chart-title .signal-badge {
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .signal-badge.buy { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+        .signal-badge.sell { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+        .signal-badge.hold { background: rgba(113, 128, 150, 0.2); color: #718096; }
+        canvas { width: 100% !important; max-height: 380px; }
+        .side-panel { display: flex; flex-direction: column; gap: 16px; }
+        .panel-card {
+            background: #1a1f2e;
+            border: 1px solid #2d3748;
+            border-radius: 12px;
+            padding: 18px;
+        }
+        .panel-title {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .position-info { display: flex; flex-direction: column; gap: 10px; }
+        .position-row { display: flex; justify-content: space-between; font-size: 13px; }
+        .position-row .key { color: #718096; }
+        .position-row .val { font-weight: 500; }
+        .position-row .val.long { color: #22c55e; }
+        .position-row .val.short { color: #ef4444; }
+        .pnl-box {
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            border-radius: 8px;
+            padding: 10px 14px;
+            text-align: center;
+            margin-top: 10px;
+        }
+        .pnl-box.negative {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: rgba(239, 68, 68, 0.3);
+        }
+        .pnl-box .pnl-label { font-size: 12px; color: #718096; margin-bottom: 4px; }
+        .pnl-box .pnl-value { font-size: 20px; font-weight: 700; color: #22c55e; }
+        .pnl-box.negative .pnl-value { color: #ef4444; }
+        .quick-trade { display: flex; flex-direction: column; gap: 10px; }
+        .leverage-selector { margin-bottom: 2px; }
+        .leverage-selector label { font-size: 12px; color: #718096; margin-bottom: 6px; display: block; }
+        .lev-btns { display: flex; gap: 4px; }
+        .lev-btn {
+            flex: 1;
+            padding: 6px 4px;
+            background: #2d3748;
+            border: none;
+            border-radius: 6px;
+            color: #a0aec0;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .lev-btn:hover { background: #4a5568; color: #e7e9ea; }
+        .lev-btn.active { background: #627eea; color: white; }
+        .quick-btns { display: flex; gap: 6px; margin-bottom: 6px; }
+        .quick-amt-btn {
+            flex: 1;
+            padding: 6px;
+            background: #2d3748;
+            border: none;
+            border-radius: 6px;
+            color: #a0aec0;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .quick-amt-btn:hover { background: #4a5568; color: #e7e9ea; }
+        .quick-amt-btn.active { background: #627eea; color: white; }
+        .tp-sl-inputs { display: flex; flex-direction: column; gap: 6px; }
+        .tp-sl-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .tp-sl-row label {
+            font-size: 12px;
+            color: #718096;
+            min-width: 50px;
+        }
+        .tp-sl-row input {
+            flex: 1;
+            background: #0f1419;
+            border: 1px solid #2d3748;
+            border-radius: 6px;
+            padding: 7px 10px;
+            color: #e7e9ea;
+            font-size: 13px;
+            text-align: right;
+        }
+        .tp-sl-row input:focus { outline: none; border-color: #627eea; }
+        .tp-sl-quick { display: flex; gap: 6px; }
+        .tp-sl-quick-btn {
+            flex: 1;
+            padding: 5px;
+            background: #1a202c;
+            border: 1px solid #2d3748;
+            border-radius: 6px;
+            color: #a0aec0;
+            font-size: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .tp-sl-quick-btn:hover { background: #2d3748; color: #e7e9ea; border-color: #627eea; }
+        .amount-input-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+        .amount-input-wrap label {
+            font-size: 12px;
+            color: #718096;
+            min-width: 50px;
+        }
+        .amount-input-wrap input {
+            flex: 1;
+            background: #0f1419;
+            border: 1px solid #2d3748;
+            border-radius: 6px;
+            padding: 8px 10px;
+            color: #e7e9ea;
+            font-size: 14px;
+            text-align: right;
+        }
+        .amount-input-wrap input:focus { outline: none; border-color: #627eea; }
+        .amount-input-wrap .unit { color: #718096; font-size: 12px; min-width: 20px; }
+        .trade-buttons { display: flex; gap: 8px; }
+        .btn-long {
+            flex: 1;
+            padding: 12px;
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-long:hover { opacity: 0.9; transform: translateY(-1px); }
+        .btn-short {
+            flex: 1;
+            padding: 12px;
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-short:hover { opacity: 0.9; transform: translateY(-1px); }
+        .size-info {
+            text-align: center;
+            font-size: 11px;
+            color: #718096;
+            margin-top: 6px;
+        }
+        .size-info span { color: #a78bfa; font-weight: 600; }
+        .btn-group { display: flex; gap: 8px; margin-top: 10px; }
+        .test-trade-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 8px;
+            padding: 8px 10px;
+            background: rgba(99, 102, 241, 0.08);
+            border: 1px dashed rgba(99, 102, 241, 0.3);
+            border-radius: 8px;
+        }
+        .test-label { font-size: 11px; color: #a0aec0; font-weight: 500; }
+        .test-btns { display: flex; gap: 6px; }
+        .test-btn {
+            padding: 5px 14px;
+            border: none;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .test-btn.test-long {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+        }
+        .test-btn.test-long:hover { background: rgba(16, 185, 129, 0.35); }
+        .test-btn.test-short {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+        .test-btn.test-short:hover { background: rgba(239, 68, 68, 0.35); }
+        .btn {
+            flex: 1;
+            padding: 9px 14px;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn:active { transform: scale(0.98); }
+        .btn-danger { background: #ef4444; color: white; }
+        .btn-danger:hover { background: #dc2626; }
+        .auto-trade-panel { display: flex; flex-direction: column; gap: 10px; }
+        .auto-status-badge {
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            background: #374151;
+            color: #9ca3af;
+            margin-left: auto;
+            font-weight: 600;
+        }
+        .auto-status-badge.running { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+        .auto-toggle-row { display: flex; gap: 8px; }
+        .btn-start-auto {
+            flex: 1;
+            padding: 10px;
+            background: linear-gradient(135deg, #627eea, #4c51bf);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-start-auto:hover { opacity: 0.9; transform: translateY(-1px); }
+        .btn-start-auto.active { background: linear-gradient(135deg, #ef4444, #dc2626); }
+        .auto-config-section { margin-top: 2px; }
+        .config-label { font-size: 12px; color: #718096; margin-bottom: 6px; }
+        .tf-selector { display: flex; flex-wrap: wrap; gap: 6px; }
+        .tf-check {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 11px;
+            color: #a0aec0;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 6px;
+            background: #1a202c;
+            border: 1px solid #2d3748;
+        }
+        .tf-check input { margin: 0; accent-color: #627eea; }
+        .tf-check:has(input:checked) {
+            border-color: #627eea;
+            background: rgba(98, 126, 234, 0.1);
+            color: #e7e9ea;
+        }
+        .auto-config-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .auto-config-row label {
+            font-size: 12px;
+            color: #718096;
+            min-width: 65px;
+        }
+        .auto-config-row input {
+            flex: 1;
+            background: #0f1419;
+            border: 1px solid #2d3748;
+            border-radius: 6px;
+            padding: 6px 10px;
+            color: #e7e9ea;
+            font-size: 13px;
+            text-align: right;
+        }
+        .auto-config-row input:focus { outline: none; border-color: #627eea; }
+        .auto-config-row .unit { color: #718096; font-size: 12px; min-width: 20px; }
+        .entry-btns { display: flex; gap: 4px; flex: 1; }
+        .entry-btn {
+            flex: 1;
+            padding: 6px;
+            background: #2d3748;
+            border: none;
+            border-radius: 6px;
+            color: #a0aec0;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .entry-btn:hover { background: #4a5568; color: #e7e9ea; }
+        .entry-btn.active { background: #627eea; color: white; }
+        .btn-save-config {
+            padding: 8px;
+            background: #2d3748;
+            color: #a0aec0;
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-save-config:hover { background: #4a5568; color: #e7e9ea; }
+        .auto-current-config {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #2d3748;
+        }
+        .auto-current-config .config-label {
+            font-size: 12px;
+            color: #718096;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        .config-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        .config-item {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            background: #0f1419;
+            border: 1px solid #2d3748;
+            border-radius: 6px;
+            padding: 8px 10px;
+        }
+        .config-key {
+            font-size: 10px;
+            color: #718096;
+        }
+        .config-val {
+            font-size: 13px;
+            font-weight: 600;
+            color: #e7e9ea;
+        }
+        .auto-test-section {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #2d3748;
+        }
+        .test-tf-selector {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .test-tf-selector label { font-size: 11px; color: #718096; }
+        .test-select {
+            flex: 1;
+            background: #0f1419;
+            border: 1px solid #2d3748;
+            border-radius: 6px;
+            padding: 5px 8px;
+            color: #e7e9ea;
+            font-size: 12px;
+            outline: none;
+        }
+        .test-select:focus { border-color: #627eea; }
+        .test-direction-row { display: flex; gap: 6px; margin-bottom: 6px; }
+        .test-dir-btn {
+            flex: 1;
+            padding: 7px 4px;
+            border: none;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .test-dir-btn.test-long {
+            background: rgba(16, 185, 129, 0.15);
+            color: #10b981;
+        }
+        .test-dir-btn.test-long:hover { background: rgba(16, 185, 129, 0.3); }
+        .test-dir-btn.test-short {
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+        }
+        .test-dir-btn.test-short:hover { background: rgba(239, 68, 68, 0.3); }
+        .test-dir-btn.test-auto {
+            background: rgba(99, 102, 241, 0.15);
+            color: #6366f1;
+        }
+        .test-dir-btn.test-auto:hover { background: rgba(99, 102, 241, 0.3); }
+        .test-hint {
+            font-size: 10px;
+            color: #718096;
+            text-align: center;
+        }
+
+        .signal-log { max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+        .signal-item {
+            font-size: 11px;
+            padding: 5px 8px;
+            background: #0f1419;
+            border-radius: 4px;
+            display: flex;
+            gap: 8px;
+            align-items: flex-start;
+        }
+        .signal-time { color: #718096; flex-shrink: 0; }
+        .signal-msg { color: #a0aec0; }
+        .signal-item.level-success .signal-msg { color: #22c55e; }
+        .signal-item.level-danger .signal-msg { color: #ef4444; }
+        .signal-item.level-error .signal-msg { color: #ef4444; }
+        .trade-list { max-height: 280px; overflow-y: auto; }
+        .trade-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #2d3748;
+            font-size: 12px;
+        }
+        .trade-item:last-child { border-bottom: none; }
+        .trade-left { display: flex; align-items: center; gap: 10px; }
+        .trade-side {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 700;
+            min-width: 36px;
+            text-align: center;
+        }
+        .trade-side.long { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+        .trade-side.short { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+        .trade-info .trade-reason { color: #e7e9ea; margin-bottom: 2px; }
+        .trade-info .trade-time { color: #718096; font-size: 11px; }
+        .trade-pnl.positive { color: #22c55e; font-weight: 600; }
+        .trade-pnl.negative { color: #ef4444; font-weight: 600; }
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 14px 20px;
+            border-radius: 10px;
+            color: white;
+            font-size: 14px;
+            opacity: 0;
+            transform: translateY(-20px);
+            transition: all 0.3s;
+            z-index: 9999;
+            max-width: 320px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast.success { background: #10b981; }
+        .toast.info { background: #6366f1; }
+        .toast.error { background: #ef4444; }
+        .loading { text-align: center; padding: 20px; color: #718096; }
+        .loading::after {
+            content: '';
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #718096;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">
+            <h1>📊 ETH 合约交易</h1>
+            <span class="mode-badge" id="modeBadge">加载中</span>
+        </div>
+        <div class="header-right">
+            <div class="status-badge">
+                <div class="status-dot"></div>
+                <span id="statusText">连接中</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="label">账户权益 (USDT)</div>
+                <div class="value" id="totalEquity">--</div>
+                <div class="sub" id="totalSub">加载中...</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">可用余额</div>
+                <div class="value" id="available">--</div>
+                <div class="sub" id="usedSub">--</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">ETH 价格</div>
+                <div class="value" id="currentPrice">--</div>
+                <div class="sub" id="priceChange">--</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">持仓盈亏</div>
+                <div class="value" id="positionPnl">--</div>
+                <div class="sub" id="positionPnlPct">--</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">24h 盈亏</div>
+                <div class="value" id="pnl24h">--</div>
+                <div class="sub">胜率: --</div>
+            </div>
+        </div>
+
+        <div class="main-grid">
+            <div class="chart-container">
+                <div class="chart-title">
+                    <span>ETH-USDT-SWAP · 1小时</span>
+                    <span class="signal-badge hold" id="signalBadge">--</span>
+                </div>
+                <div class="loading" id="chartLoading">加载K线数据中...</div>
+                <canvas id="candleChart" style="display:none;"></canvas>
+            </div>
+
+            <div class="side-panel">
+                <div class="panel-card">
+                    <div class="panel-title">⚡ 快速开单</div>
+                    <div class="quick-trade">
+                        <div class="leverage-selector">
+                            <label>杠杆</label>
+                            <div class="lev-btns">
+                                <button class="lev-btn active" data-lev="5">5x</button>
+                                <button class="lev-btn" data-lev="10">10x</button>
+                                <button class="lev-btn" data-lev="20">20x</button>
+                                <button class="lev-btn" data-lev="50">50x</button>
+                                <button class="lev-btn" data-lev="100">100x</button>
+                            </div>
+                        </div>
+                        <div class="quick-btns">
+                            <button class="quick-amt-btn" onclick="setAmount(5)">5U</button>
+                            <button class="quick-amt-btn" onclick="setAmount(50)">50U</button>
+                            <button class="quick-amt-btn active" onclick="setAmount(100)">100U</button>
+                            <button class="quick-amt-btn" onclick="setAmount(200)">200U</button>
+                            <button class="quick-amt-btn" onclick="setAmount(500)">500U</button>
+                        </div>
+                        <div class="amount-input-wrap">
+                            <label>金额</label>
+                            <input type="number" id="orderAmount" value="100" min="5" step="5">
+                            <span class="unit">U</span>
+                        </div>
+                        <div class="size-info">
+                            约 <span id="calcSize">--</span> 张 (ETH) · 保证金 <span id="calcMargin">10</span> U
+                        </div>
+                        <div class="tp-sl-inputs">
+                            <div class="tp-sl-row">
+                                <label>止盈价</label>
+                                <input type="number" id="takeProfit" placeholder="止盈价格" step="0.01">
+                            </div>
+                            <div class="tp-sl-row">
+                                <label>止损价</label>
+                                <input type="number" id="stopLoss" placeholder="止损价格" step="0.01">
+                            </div>
+                        </div>
+                        <div class="tp-sl-quick">
+                            <button class="tp-sl-quick-btn" onclick="setTpSlPercent(3, 2)">+3% / -2%</button>
+                            <button class="tp-sl-quick-btn" onclick="setTpSlPercent(5, 3)">+5% / -3%</button>
+                            <button class="tp-sl-quick-btn" onclick="setTpSlPercent(10, 5)">+10% / -5%</button>
+                        </div>
+                        <div class="trade-buttons">
+                            <button class="btn-long" onclick="openPosition('long')">开多 / 平空</button>
+                            <button class="btn-short" onclick="openPosition('short')">开空 / 平多</button>
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn-danger" onclick="closeAll()">一键全平</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel-card">
+                    <div class="panel-title">💼 当前持仓</div>
+                    <div class="position-info">
+                        <div class="position-row">
+                            <span class="key">方向</span>
+                            <span class="val" id="posSide">--</span>
+                        </div>
+                        <div class="position-row">
+                            <span class="key">保证金</span>
+                            <span class="val" id="posMargin">--</span>
+                        </div>
+                        <div class="position-row">
+                            <span class="key">开仓价格</span>
+                            <span class="val" id="posEntry">--</span>
+                        </div>
+                        <div class="position-row">
+                            <span class="key">持仓数量</span>
+                            <span class="val" id="posSize">--</span>
+                        </div>
+                        <div class="pnl-box" id="pnlBox">
+                            <div class="pnl-label">未实现盈亏</div>
+                            <div class="pnl-value">--</div>
+                        </div>
+                    </div>
+                </div>
+
+
+
+                <div class="panel-card">
+                    <div class="panel-title">
+                        🤖 EMA自动交易
+                        <span class="auto-status-badge" id="autoStatusBadge">已停止</span>
+                    </div>
+                    <div class="auto-trade-panel">
+                        <div class="auto-toggle-row">
+                            <button class="btn-start-auto" id="btnStartAuto" onclick="toggleAutoTrading()">启动自动交易</button>
+                        </div>
+
+                        <div class="auto-config-section">
+                            <div class="config-label">杠杆</div>
+                            <div class="lev-btns auto-lev-btns">
+                                <button class="lev-btn auto-lev-btn" data-lev="5">5x</button>
+                                <button class="lev-btn auto-lev-btn" data-lev="10">10x</button>
+                                <button class="lev-btn auto-lev-btn" data-lev="20">20x</button>
+                                <button class="lev-btn auto-lev-btn" data-lev="50">50x</button>
+                                <button class="lev-btn auto-lev-btn" data-lev="100">100x</button>
+                            </div>
+                        </div>
+
+                        <div class="auto-config-section">
+                            <div class="config-label">启用周期</div>
+                            <div class="tf-selector">
+                                <label class="tf-check"><input type="checkbox" value="5m" class="tf-cb" checked> 5m</label>
+                                <label class="tf-check"><input type="checkbox" value="15m" class="tf-cb" checked> 15m</label>
+                                <label class="tf-check"><input type="checkbox" value="30m" class="tf-cb"> 30m</label>
+                                <label class="tf-check"><input type="checkbox" value="1h" class="tf-cb"> 1h</label>
+                                <label class="tf-check"><input type="checkbox" value="4h" class="tf-cb"> 4h</label>
+                            </div>
+                        </div>
+
+                        <div class="auto-config-row">
+                            <label>总金额</label>
+                            <input type="number" id="autoAmount" value="100" min="5" step="1">
+                            <span class="unit">U</span>
+                        </div>
+
+                        <div class="auto-config-row">
+                            <label>分批份数</label>
+                            <div class="entry-btns">
+                                <button class="entry-btn active" data-entries="1">1份</button>
+                                <button class="entry-btn" data-entries="2">2份</button>
+                                <button class="entry-btn" data-entries="3">3份</button>
+                            </div>
+                        </div>
+
+                        <div class="auto-config-row">
+                            <label>止盈点数</label>
+                            <input type="number" id="autoTp" value="50" step="1">
+                            <span class="unit">点</span>
+                        </div>
+
+                        <div class="auto-config-row">
+                            <label>止损点数</label>
+                            <input type="number" id="autoSl" value="30" step="1">
+                            <span class="unit">点</span>
+                        </div>
+
+                        <button class="btn-save-config" onclick="saveAutoConfig()">保存配置</button>
+
+                        <div class="auto-test-section">
+                            <div class="config-label">策略测试</div>
+                            <div class="test-tf-selector">
+                                <label>测试周期:</label>
+                                <select id="testTf" class="test-select">
+                                    <option value="5m">5分钟</option>
+                                    <option value="15m">15分钟</option>
+                                    <option value="30m">30分钟</option>
+                                    <option value="1h">1小时</option>
+                                    <option value="4h">4小时</option>
+                                </select>
+                            </div>
+                            <div class="test-direction-row">
+                                <button class="test-dir-btn test-long" onclick="testEMAStrategy('long')">测试做多</button>
+                                <button class="test-dir-btn test-short" onclick="testEMAStrategy('short')">测试做空</button>
+                                <button class="test-dir-btn test-auto" onclick="testEMAStrategy(null)">按趋势</button>
+                            </div>
+                            <div class="test-hint">点击即用当前配置和EMA策略逻辑开一单测试</div>
+                        </div>
+
+                        <div class="auto-current-config">
+                            <div class="config-label">当前配置</div>
+                            <div class="config-grid">
+                                <div class="config-item">
+                                    <span class="config-key">状态</span>
+                                    <span class="config-val" id="cfgRunning">已停止</span>
+                                </div>
+                                <div class="config-item">
+                                    <span class="config-key">杠杆</span>
+                                    <span class="config-val" id="cfgLeverage">100x</span>
+                                </div>
+                                <div class="config-item">
+                                    <span class="config-key">启用周期</span>
+                                    <span class="config-val" id="cfgTfs">-</span>
+                                </div>
+                                <div class="config-item">
+                                    <span class="config-key">总金额</span>
+                                    <span class="config-val" id="cfgAmount">-</span>
+                                </div>
+                                <div class="config-item">
+                                    <span class="config-key">分批份数</span>
+                                    <span class="config-val" id="cfgEntries">-</span>
+                                </div>
+                                <div class="config-item">
+                                    <span class="config-key">止盈点数</span>
+                                    <span class="config-val" id="cfgTp">-</span>
+                                </div>
+                                <div class="config-item">
+                                    <span class="config-key">止损点数</span>
+                                    <span class="config-val" id="cfgSl">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel-card">
+                    <div class="panel-title">📝 信号日志</div>
+                    <div class="signal-log" id="signalLog">
+                        <div class="loading">加载中...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel-card">
+            <div class="panel-title">📋 交易历史</div>
+            <div class="trade-list" id="tradeList">
+                <div class="loading">加载中...</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        let candleChart = null;
+        let currentPrice = 3500;
+        let leverage = 10;
+        let mockMode = true;
+
+        const API_BASE = window.location.origin;
+
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = 'toast show ' + type;
+            setTimeout(() => { toast.className = 'toast'; }, 3000);
+        }
+
+        function formatPrice(price) {
+            if (price == null || isNaN(price)) return '--';
+            return '$' + Number(price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function setAmount(amt) {
+            document.getElementById('orderAmount').value = amt;
+            document.querySelectorAll('.quick-amt-btn').forEach(b => {
+                b.classList.toggle('active', parseFloat(b.textContent) === amt);
+            });
+            updateCalc();
+        }
+
+        function updateCalc() {
+            const amt = parseFloat(document.getElementById('orderAmount').value) || 0;
+            const size = amt / currentPrice;
+            const margin = amt / leverage;
+            document.getElementById('calcSize').textContent = size.toFixed(3);
+            document.getElementById('calcMargin').textContent = margin.toFixed(2);
+        }
+
+        function setLeverage(lev, saveToAuto = true) {
+            leverage = lev;
+            document.querySelectorAll('.lev-btn').forEach(b => {
+                b.classList.toggle('active', parseInt(b.dataset.lev) === lev);
+            });
+            updateCalc();
+            const cfgLev = document.getElementById('cfgLeverage');
+            if (cfgLev) cfgLev.textContent = lev + 'x';
+            if (saveToAuto) {
+                autoConfig.leverage = lev;
+            }
+            fetch(API_BASE + '/api/set_leverage', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ leverage: lev })
+            }).catch(e => console.warn('设置杠杆:', e));
+        }
+
+        function updateConfigDisplay(config, running) {
+            document.getElementById('cfgRunning').textContent = running ? '运行中' : '已停止';
+            document.getElementById('cfgRunning').style.color = running ? '#48bb78' : '#718096';
+            document.getElementById('cfgLeverage').textContent = (config.leverage || leverage) + 'x';
+            const tfs = config.enabled_tfs || [];
+            const tfMap = {'5m':'5m','15m':'15m','30m':'30m','1h':'1h','4h':'4h'};
+            document.getElementById('cfgTfs').textContent = tfs.length ? tfs.map(t => tfMap[t] || t).join(' ') : '-';
+            document.getElementById('cfgAmount').textContent = (config.total_amount_usdt || 0) + ' U';
+            document.getElementById('cfgEntries').textContent = (config.num_entries || 1) + '份';
+            document.getElementById('cfgTp').textContent = (config.tp_points || 0) + ' 点';
+            document.getElementById('cfgSl').textContent = (config.sl_points || 0) + ' 点';
+        }
+
+        function setTpSlPercent(tpPct, slPct) {
+            const price = currentPrice;
+            const tpPrice = (price * (1 + tpPct / 100)).toFixed(2);
+            const slPrice = (price * (1 - slPct / 100)).toFixed(2);
+            document.getElementById('takeProfit').value = tpPrice;
+            document.getElementById('stopLoss').value = slPrice;
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('.lev-btn').forEach(btn => {
+                btn.addEventListener('click', () => setLeverage(parseInt(btn.dataset.lev)));
+            });
+        });
+
+        function updateLeverageUI(lev) {
+            leverage = lev;
+            document.querySelectorAll('.lev-btn').forEach(b => {
+                b.classList.toggle('active', parseInt(b.dataset.lev) === lev);
+            });
+            updateCalc();
+            const cfgLev = document.getElementById('cfgLeverage');
+            if (cfgLev) cfgLev.textContent = lev + 'x';
+        }
+
+        async function fetchHealth() {
+            try {
+                const res = await fetch(API_BASE + '/api/health');
+                const data = await res.json();
+                mockMode = data.mock_mode || false;
+                const badge = document.getElementById('modeBadge');
+                badge.textContent = mockMode ? '模拟模式' : '真实API';
+                badge.className = 'mode-badge ' + (mockMode ? 'mock' : 'real');
+            } catch (e) {
+                console.error('健康检查失败:', e);
+            }
+        }
+
+        async function fetchStatus() {
+            try {
+                const res = await fetch(API_BASE + '/api/status');
+                const data = await res.json();
+                if (data.code === 0) {
+                    const s = data.data;
+                    currentPrice = s.current_price || 3500;
+
+                    document.getElementById('currentPrice').textContent = formatPrice(currentPrice);
+                    updateCalc();
+
+                    if (s.position !== 0) {
+                        const side = s.position_side || (s.position === 1 ? 'long' : 'short');
+                        const sideText = side === 'long' ? '做多' : '做空';
+                        const posSideEl = document.getElementById('posSide');
+                        posSideEl.textContent = sideText;
+                        posSideEl.className = 'val ' + side;
+
+                        document.getElementById('posMargin').textContent = (s.position_usdt || 100).toFixed(0) + ' USDT';
+                        document.getElementById('posEntry').textContent = formatPrice(s.entry_price);
+                        document.getElementById('posSize').textContent = (s.position_size || 0).toFixed(3) + ' 张';
+
+                        const pnlBox = document.getElementById('pnlBox');
+                        pnlBox.className = 'pnl-box' + (s.pnl_pct >= 0 ? '' : ' negative');
+                        pnlBox.querySelector('.pnl-value').textContent =
+                            (s.pnl >= 0 ? '+' : '') + '$' + (s.pnl || 0).toFixed(2) +
+                            ' (' + (s.pnl_pct >= 0 ? '+' : '') + (s.pnl_pct || 0).toFixed(2) + '%)';
+
+                        const pnlEl = document.getElementById('positionPnl');
+                        pnlEl.textContent = (s.pnl >= 0 ? '+' : '') + '$' + (s.pnl || 0).toFixed(2);
+                        pnlEl.className = 'value ' + (s.pnl >= 0 ? 'positive' : 'negative');
+                        document.getElementById('positionPnlPct').textContent = (s.pnl_pct >= 0 ? '+' : '') + (s.pnl_pct || 0).toFixed(2) + '%';
+                    } else {
+                        document.getElementById('posSide').textContent = '空仓';
+                        document.getElementById('posSide').className = 'val';
+                        document.getElementById('posSide').style.color = '#718096';
+                        document.getElementById('posMargin').textContent = '--';
+                        document.getElementById('posEntry').textContent = '--';
+                        document.getElementById('posSize').textContent = '--';
+                        document.getElementById('pnlBox').className = 'pnl-box';
+                        document.getElementById('pnlBox').querySelector('.pnl-value').textContent = '$0.00 (0.00%)';
+                        document.getElementById('positionPnl').textContent = '$0.00';
+                        document.getElementById('positionPnl').className = 'value';
+                        document.getElementById('positionPnlPct').textContent = '0.00%';
+                    }
+
+                    document.getElementById('statusText').textContent = '已连接';
+                }
+            } catch (e) {
+                console.error('获取状态失败:', e);
+                document.getElementById('statusText').textContent = '连接失败';
+            }
+        }
+
+        async function fetchBalance() {
+            try {
+                const res = await fetch(API_BASE + '/api/balance');
+                const data = await res.json();
+                if (data.code === 0) {
+                    const b = data.data;
+                    document.getElementById('totalEquity').textContent = '$' + (b.equity || b.total || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    document.getElementById('totalSub').textContent = '初始: $5,000.00';
+                    document.getElementById('available').textContent = '$' + (b.available || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    document.getElementById('usedSub').textContent = '已用: $' + (b.used || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+                    const pnl24 = b.pnl_24h || 0;
+                    const pnlEl = document.getElementById('pnl24h');
+                    pnlEl.textContent = (pnl24 >= 0 ? '+' : '') + '$' + pnl24.toFixed(2);
+                    pnlEl.className = 'value ' + (pnl24 >= 0 ? 'positive' : 'negative');
+                }
+            } catch (e) {
+                console.error('获取余额失败:', e);
+            }
+        }
+
+        async function fetchCandles() {
+            try {
+                const res = await fetch(API_BASE + '/api/candles?limit=80');
+                const data = await res.json();
+                if (data.code === 0 && data.data && data.data.length > 0) {
+                    renderChart(data.data);
+                    document.getElementById('chartLoading').style.display = 'none';
+                    document.getElementById('candleChart').style.display = 'block';
+
+
+                }
+            } catch (e) {
+                console.error('获取K线失败:', e);
+            }
+        }
+
+        function renderChart(candles) {
+            const ctx = document.getElementById('candleChart').getContext('2d');
+            if (candleChart) candleChart.destroy();
+
+            candleChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: candles.map(c => c.time),
+                    datasets: [
+                        {
+                            label: 'ETH价格',
+                            data: candles.map(c => ({ x: c.time, y: c.close })),
+                            borderColor: 'rgba(99, 102, 241, 0.2)',
+                            backgroundColor: (ctx) => {
+                                const gradient = ctx.chart.ctx.createLinearGradient(0, 0, 0, 300);
+                                gradient.addColorStop(0, 'rgba(99, 102, 241, 0.2)');
+                                gradient.addColorStop(1, 'rgba(99, 102, 241, 0.0)');
+                                return gradient;
+                            },
+                            borderWidth: 1.5,
+                            pointRadius: 0,
+                            fill: true,
+                            tension: 0.1
+                        },
+                        {
+                            label: 'MA10',
+                            data: candles.filter(c => c.ma_fast).map(c => ({ x: c.time, y: c.ma_fast })),
+                            borderColor: '#00d4ff',
+                            borderWidth: 1.5,
+                            pointRadius: 0,
+                            fill: false,
+                            tension: 0.1
+                        },
+                        {
+                            label: 'MA50',
+                            data: candles.filter(c => c.ma_slow).map(c => ({ x: c.time, y: c.ma_slow })),
+                            borderColor: '#f59e0b',
+                            borderWidth: 1.5,
+                            pointRadius: 0,
+                            fill: false,
+                            tension: 0.1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: { color: '#718096', usePointStyle: true, pointStyle: 'line', font: { size: 11 } }
+                        },
+                        tooltip: {
+                            backgroundColor: '#1a1f2e',
+                            titleColor: '#e7e9ea',
+                            bodyColor: '#e7e9ea',
+                            borderColor: '#2d3748',
+                            borderWidth: 1,
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + formatPrice(context.parsed.y);
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: { unit: 'hour', displayFormats: { hour: 'MM-dd HH:mm' } },
+                            ticks: { color: '#718096', maxTicksLimit: 8, font: { size: 10 } },
+                            grid: { color: 'rgba(45, 55, 72, 0.4)' }
+                        },
+                        y: {
+                            ticks: {
+                                color: '#718096',
+                                font: { size: 10 },
+                                callback: function(value) { return formatPrice(value); }
+                            },
+                            grid: { color: 'rgba(45, 55, 72, 0.4)' }
+                        }
+                    }
+                }
+            });
+        }
+
+        async function fetchSignal() {
+            try {
+                const res = await fetch(API_BASE + '/api/strategy/signal');
+                const data = await res.json();
+                if (data.code === 0) {
+                    const s = data.data.signal || 'HOLD';
+                    const badge = document.getElementById('signalBadge');
+                    badge.textContent = s;
+                    badge.className = 'signal-badge ' + s.toLowerCase();
+                }
+            } catch (e) {
+                console.error('获取信号失败:', e);
+            }
+        }
+
+        async function fetchTrades() {
+            try {
+                const res = await fetch(API_BASE + '/api/trades');
+                const data = await res.json();
+                if (data.code === 0) {
+                    const list = document.getElementById('tradeList');
+                    if (!data.data || data.data.length === 0) {
+                        list.innerHTML = '<div style="text-align:center;color:#718096;padding:20px;">暂无交易记录</div>';
+                        return;
+                    }
+                    list.innerHTML = data.data.map(t => {
+                        const side = t.pos_side || (t.side === 'buy' ? 'long' : 'short');
+                        const sideText = side === 'long' ? '多' : '空';
+                        const amt = t.size_usdt || 100;
+                        const reason = t.reason || (t.side === 'buy' ? '做多' : '做空');
+                        const pnlText = t.status === 'open' ? '进行中' : ((t.pnl >= 0 ? '+' : '') + '$' + (t.pnl || 0).toFixed(2));
+                        const pnlClass = t.status === 'open' ? 'positive' : (t.pnl >= 0 ? 'positive' : 'negative');
+                        return `
+                            <div class="trade-item">
+                                <div class="trade-left">
+                                    <span class="trade-side ${side}">${sideText}</span>
+                                    <div class="trade-info">
+                                        <div class="trade-reason">${reason} · ${amt}U</div>
+                                        <div class="trade-time">${t.time || '--'} · @ ${formatPrice(t.price)}</div>
+                                    </div>
+                                </div>
+                                <div class="trade-pnl ${pnlClass}">${pnlText}</div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            } catch (e) {
+                console.error('获取交易历史失败:', e);
+            }
+        }
+
+        async function openPosition(side) {
+            const amt = parseFloat(document.getElementById('orderAmount').value) || 0;
+            if (amt <= 0) {
+                showToast('请输入有效金额', 'error');
+                return;
+            }
+
+            const posSide = side;
+            const apiSide = side === 'long' ? 'buy' : 'sell';
+            const takeProfit = document.getElementById('takeProfit').value;
+            const stopLoss = document.getElementById('stopLoss').value;
+
+            showToast('正在下单...', 'info');
+
+            try {
+                const res = await fetch(API_BASE + '/api/order', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        side: apiSide,
+                        amount_usdt: amt,
+                        pos_side: posSide,
+                        leverage: leverage,
+                        take_profit: takeProfit || null,
+                        stop_loss: stopLoss || null
+                    })
+                });
+                const data = await res.json();
+                if (data.code === 0) {
+                    showToast('下单成功: ' + (data.data.message || ''), 'success');
+                    document.getElementById('takeProfit').value = '';
+                    document.getElementById('stopLoss').value = '';
+                    setTimeout(() => {
+                        fetchStatus();
+                        fetchBalance();
+                        fetchTrades();
+                    }, 1000);
+                } else {
+                    showToast('下单失败: ' + (data.msg || '未知错误'), 'error');
+                }
+            } catch (e) {
+                showToast('下单失败: ' + e.message, 'error');
+            }
+        }
+
+        async function closeAll() {
+            showToast('正在平仓...', 'info');
+            try {
+                const res = await fetch(API_BASE + '/api/close_position', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await res.json();
+                if (data.code === 0) {
+                    showToast('平仓成功: ' + (data.data.message || ''), 'success');
+                    setTimeout(() => {
+                        fetchStatus();
+                        fetchBalance();
+                        fetchTrades();
+                    }, 1000);
+                } else {
+                    showToast('平仓失败: ' + (data.msg || '未知错误'), 'error');
+                }
+            } catch (e) {
+                showToast('平仓失败: ' + e.message, 'error');
+            }
+        }
+
+        let autoTradingRunning = false;
+        let autoConfig = {
+            enabled_tfs: ["5m", "15m"],
+            total_amount_usdt: 100,
+            num_entries: 2,
+            tp_points: 50,
+            sl_points: 30,
+        };
+        let autoConfigEditing = false;
+
+        async function testEMAStrategy(direction) {
+            const tf = document.getElementById('testTf').value;
+            const dirText = direction === null ? '按趋势' : (direction === 'long' ? '做多' : '做空');
+            showToast(`EMA策略测试中... (${tf} ${dirText})`, 'info');
+
+            try {
+                const res = await fetch(API_BASE + '/api/auto/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        tf: tf,
+                        direction: direction
+                    })
+                });
+                const data = await res.json();
+                if (data.code === 0) {
+                    const d = data.data || {};
+                    const slAdj = d.sl_adjusted ? ' (止损缩1/3)' : '';
+                    showToast(`测试成功: ${d.direction} $${d.current_price?.toFixed(2)}${slAdj}`, 'success');
+                    setTimeout(() => {
+                        fetchStatus();
+                        fetchBalance();
+                        fetchAutoStatus();
+                        fetchTrades();
+                    }, 1000);
+                } else {
+                    showToast('测试失败: ' + (data.msg || '未知错误'), 'error');
+                }
+            } catch (e) {
+                showToast('测试失败: ' + e.message, 'error');
+            }
+        }
+
+        document.getElementById('orderAmount').addEventListener('input', updateCalc);
+
+        document.querySelectorAll('.entry-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.entry-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                autoConfig.num_entries = parseInt(btn.dataset.entries);
+            });
+        });
+
+        document.querySelectorAll('.tf-cb').forEach(cb => {
+            cb.addEventListener('change', () => {
+                autoConfig.enabled_tfs = Array.from(document.querySelectorAll('.tf-cb:checked')).map(c => c.value);
+            });
+        });
+
+        function setAutoEditing(val) {
+            autoConfigEditing = val;
+        }
+        document.getElementById('autoAmount').addEventListener('input', (e) => {
+            autoConfig.total_amount_usdt = parseFloat(e.target.value) || 0;
+            setAutoEditing(true);
+        });
+        document.getElementById('autoAmount').addEventListener('blur', () => {
+            setTimeout(() => setAutoEditing(false), 500);
+        });
+        document.getElementById('autoTp').addEventListener('input', (e) => {
+            autoConfig.tp_points = parseFloat(e.target.value) || 0;
+            setAutoEditing(true);
+        });
+        document.getElementById('autoTp').addEventListener('blur', () => {
+            setTimeout(() => setAutoEditing(false), 500);
+        });
+        document.getElementById('autoSl').addEventListener('input', (e) => {
+            autoConfig.sl_points = parseFloat(e.target.value) || 0;
+            setAutoEditing(true);
+        });
+        document.getElementById('autoSl').addEventListener('blur', () => {
+            setTimeout(() => setAutoEditing(false), 500);
+        });
+
+        async function saveAutoConfig() {
+            autoConfig.enabled_tfs = Array.from(document.querySelectorAll('.tf-cb:checked')).map(c => c.value);
+            autoConfig.total_amount_usdt = parseFloat(document.getElementById('autoAmount').value) || 100;
+            autoConfig.tp_points = parseFloat(document.getElementById('autoTp').value) || 50;
+            autoConfig.sl_points = parseFloat(document.getElementById('autoSl').value) || 30;
+            const activeEntryBtn = document.querySelector('.entry-btn.active');
+            if (activeEntryBtn) {
+                autoConfig.num_entries = parseInt(activeEntryBtn.dataset.entries);
+            }
+            autoConfig.leverage = leverage;
+
+            try {
+                const res = await fetch(API_BASE + '/api/auto/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(autoConfig)
+                });
+                const data = await res.json();
+                if (data.code === 0) {
+                    showToast('配置已保存', 'success');
+                } else {
+                    showToast('保存失败: ' + (data.msg || ''), 'error');
+                }
+            } catch (e) {
+                showToast('保存失败: ' + e.message, 'error');
+            }
+        }
+
+        async function toggleAutoTrading() {
+            const btn = document.getElementById('btnStartAuto');
+            if (autoTradingRunning) {
+                try {
+                    const res = await fetch(API_BASE + '/api/auto/stop', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    const data = await res.json();
+                    if (data.code === 0) {
+                        autoTradingRunning = false;
+                        btn.textContent = '启动自动交易';
+                        btn.classList.remove('active');
+                        document.getElementById('autoStatusBadge').textContent = '已停止';
+                        document.getElementById('autoStatusBadge').classList.remove('running');
+                        showToast('自动交易已停止', 'info');
+                    }
+                } catch (e) {
+                    showToast('停止失败: ' + e.message, 'error');
+                }
+            } else {
+                await saveAutoConfig();
+                try {
+                    const res = await fetch(API_BASE + '/api/auto/start', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    const data = await res.json();
+                    if (data.code === 0) {
+                        autoTradingRunning = true;
+                        btn.textContent = '停止自动交易';
+                        btn.classList.add('active');
+                        document.getElementById('autoStatusBadge').textContent = '运行中';
+                        document.getElementById('autoStatusBadge').classList.add('running');
+                        showToast('自动交易已启动', 'success');
+                    } else {
+                        showToast('启动失败: ' + (data.msg || ''), 'error');
+                    }
+                } catch (e) {
+                    showToast('启动失败: ' + e.message, 'error');
+                }
+            }
+        }
+
+        async function fetchAutoStatus() {
+            try {
+                const res = await fetch(API_BASE + '/api/auto/status');
+                const data = await res.json();
+                if (data.code === 0) {
+                    const s = data.data;
+                    autoTradingRunning = s.running || false;
+
+                    const btn = document.getElementById('btnStartAuto');
+                    const badge = document.getElementById('autoStatusBadge');
+                    if (autoTradingRunning) {
+                        btn.textContent = '停止自动交易';
+                        btn.classList.add('active');
+                        badge.textContent = '运行中';
+                        badge.classList.add('running');
+                    } else {
+                        btn.textContent = '启动自动交易';
+                        btn.classList.remove('active');
+                        badge.textContent = '已停止';
+                        badge.classList.remove('running');
+                    }
+
+                    if (s.config) {
+                        autoConfig = { ...autoConfig, ...s.config };
+
+                        if (s.config.leverage && s.config.leverage !== leverage) {
+                            updateLeverageUI(s.config.leverage);
+                        }
+
+                        if (!autoConfigEditing) {
+                            const amountInput = document.getElementById('autoAmount');
+                            const tpInput = document.getElementById('autoTp');
+                            const slInput = document.getElementById('autoSl');
+
+                            if (document.activeElement !== amountInput) {
+                                amountInput.value = s.config.total_amount_usdt || 100;
+                            }
+                            if (document.activeElement !== tpInput) {
+                                tpInput.value = s.config.tp_points || 50;
+                            }
+                            if (document.activeElement !== slInput) {
+                                slInput.value = s.config.sl_points || 30;
+                            }
+
+                            document.querySelectorAll('.entry-btn').forEach(b => {
+                                b.classList.toggle('active', parseInt(b.dataset.entries) === (s.config.num_entries || 2));
+                            });
+
+                            if (s.config.enabled_tfs) {
+                                document.querySelectorAll('.tf-cb').forEach(cb => {
+                                    cb.checked = s.config.enabled_tfs.includes(cb.value);
+                                });
+                            }
+                        }
+
+                        updateConfigDisplay(s.config, autoTradingRunning);
+                    }
+
+                    renderSignalLog(s.logs || []);
+                }
+            } catch (e) {
+                console.error('获取自动交易状态失败:', e);
+            }
+        }
+
+
+
+        function renderSignalLog(signals) {
+            const log = document.getElementById('signalLog');
+            if (!signals || signals.length === 0) {
+                log.innerHTML = '<div style="text-align:center;color:#718096;padding:12px;">暂无信号</div>';
+                return;
+            }
+            log.innerHTML = signals.map(s => `
+                <div class="signal-item level-${s.level || 'info'}">
+                    <span class="signal-time">${s.time || ''}</span>
+                    <span class="signal-msg">${s.msg || s.message || ''}</span>
+                </div>
+            `).join('');
+        }
+
+        async function init() {
+            await fetchHealth();
+            await Promise.all([
+                fetchStatus(),
+                fetchBalance(),
+                fetchCandles(),
+                fetchSignal(),
+                fetchTrades(),
+                fetchAutoStatus()
+            ]);
+
+            setInterval(fetchStatus, 3000);
+            setInterval(fetchBalance, 10000);
+            setInterval(fetchSignal, 15000);
+            setInterval(fetchCandles, 60000);
+            setInterval(fetchTrades, 30000);
+            setInterval(fetchAutoStatus, 5000);
+        }
+
+        init();
+    </script>
+</body>
+</html>
