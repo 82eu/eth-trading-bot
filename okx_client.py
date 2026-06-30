@@ -208,7 +208,7 @@ class OKXClient:
 
     def place_order_usdt(self, symbol, side, usdt_amount, order_type="market",
                          price=None, pos_side=None, stop_loss=None, take_profit=None, leverage=None):
-        """用USDT金额下单，自动带上止盈止损条件单"""
+        """用USDT金额下单，自动带上止盈止损"""
         ticker = self.get_ticker(symbol)
         if not ticker:
             logger.error("无法获取行情，无法下单")
@@ -239,20 +239,14 @@ class OKXClient:
             pos_side = "long" if side == "buy" else "short"
 
         logger.info(f"下单: {side} {usdt_amount}U = {size}张 @ {current_price} ({pos_side}, {lev}x)")
-        order_id = self.place_order(symbol, side, size, order_type, price, pos_side, lev)
-
-        if order_id and (stop_loss or take_profit):
-            import time as _time
-            _time.sleep(0.5)
-            try:
-                self.set_stop_take_profit(symbol, pos_side, stop_loss, take_profit)
-            except Exception as e:
-                logger.warning(f"设置止盈止损失败: {e}")
+        order_id = self.place_order(symbol, side, size, order_type, price, pos_side, lev,
+                                    stop_loss=stop_loss, take_profit=take_profit)
 
         return order_id
 
-    def place_order(self, symbol, side, size, order_type="market", price=None, pos_side="long", leverage=None):
-        """下单"""
+    def place_order(self, symbol, side, size, order_type="market", price=None, pos_side="long", leverage=None,
+                    stop_loss=None, take_profit=None):
+        """下单（支持直接设置止盈止损，HTTP直连）"""
         try:
             inst_id = self._normalize_symbol(symbol)
             lev = leverage if leverage else LEVERAGE
@@ -262,16 +256,31 @@ class OKXClient:
             except Exception as e:
                 logger.debug(f"设置杠杆跳过: {e}")
 
-            if order_type == "market":
-                result = self.trade.place_order(
-                    instId=inst_id, tdMode="cross", side=side,
-                    ordType="market", sz=str(size), posSide=pos_side
-                )
-            else:
-                result = self.trade.place_order(
-                    instId=inst_id, tdMode="cross", side=side,
-                    ordType="limit", sz=str(size), px=str(price), posSide=pos_side
-                )
+            body_dict = {
+                "instId": inst_id,
+                "tdMode": "cross",
+                "side": side,
+                "ordType": order_type,
+                "sz": str(size),
+                "posSide": pos_side,
+            }
+            if order_type == "limit" and price:
+                body_dict["px"] = str(price)
+
+            if take_profit:
+                body_dict["tpTriggerPx"] = str(take_profit)
+                body_dict["tpOrdPx"] = "-1"
+            if stop_loss:
+                body_dict["slTriggerPx"] = str(stop_loss)
+                body_dict["slOrdPx"] = "-1"
+
+            body = json.dumps(body_dict, separators=(',', ':'))
+            headers = self._get_auth_headers("POST", "/api/v5/trade/order", body)
+            resp = requests.post(
+                f"{self.base_url}/api/v5/trade/order",
+                data=body, headers=headers, timeout=10
+            )
+            result = resp.json()
 
             if result.get("code") == "0":
                 order_id = result["data"][0]["ordId"]
