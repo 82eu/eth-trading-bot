@@ -452,6 +452,7 @@ class OKXClient:
                 "instId": inst_id,
                 "tdMode": "cross",
                 "side": side,
+                "ordType": "conditional",
                 "posSide": pos_side,
                 "triggerType": "1",
             }
