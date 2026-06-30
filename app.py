@@ -5,6 +5,7 @@ Flask Web应用 - OKX量化交易可视化仪表盘
 from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
 from dotenv import load_dotenv
+from loguru import logger
 import os
 import sys
 from datetime import datetime
