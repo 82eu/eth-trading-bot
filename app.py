@@ -345,12 +345,13 @@ def place_order():
 
             order_id = client.place_order_usdt(
                 symbol, side, amount_usdt, order_type, price, pos_side,
-                stop_loss=stop_loss, take_profit=take_profit
+                stop_loss=stop_loss, take_profit=take_profit, leverage=leverage
             )
             if order_id:
                 return jsonify({"code": 0, "data": {"order_id": order_id}})
             else:
-                return jsonify({"code": 1, "msg": "下单失败"}), 400
+                err_msg = getattr(client, 'last_error', '下单失败')
+                return jsonify({"code": 1, "msg": err_msg}), 400
         except Exception as e:
             return jsonify({"code": 1, "msg": str(e)}), 500
 

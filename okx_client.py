@@ -212,6 +212,7 @@ class OKXClient:
         ticker = self.get_ticker(symbol)
         if not ticker:
             logger.error("无法获取行情，无法下单")
+            self.last_error = "无法获取行情"
             return None
 
         current_price = ticker["last"]
@@ -220,6 +221,7 @@ class OKXClient:
 
         if size is None or size <= 0:
             logger.error(f"计算张数失败: {size}")
+            self.last_error = f"计算张数失败: {size}"
             return None
 
         balance = self.get_balance()
@@ -232,7 +234,9 @@ class OKXClient:
                         break
             margin_needed = usdt_amount / lev
             if avail_eq < margin_needed:
-                logger.error(f"余额不足: 可用 {avail_eq:.2f} USDT, 需要保证金 {margin_needed:.2f} USDT ({usdt_amount:.2f}U合约价值 × {lev}x杠杆)")
+                msg = f"余额不足: 可用 {avail_eq:.2f} USDT, 需要保证金 {margin_needed:.2f} USDT ({usdt_amount:.2f}U合约价值 × {lev}x杠杆)"
+                logger.error(msg)
+                self.last_error = msg
                 return None
 
         if pos_side is None:
@@ -288,9 +292,11 @@ class OKXClient:
                 return order_id
             else:
                 logger.error(f"下单失败: {result}")
+                self.last_error = f"下单失败: {result.get('msg', '未知错误')}"
                 return None
         except Exception as e:
             logger.error(f"下单异常: {e}")
+            self.last_error = f"下单异常: {e}"
             return None
 
     def close_position_usdt(self, symbol, side, usdt_amount, pos_side=None):
