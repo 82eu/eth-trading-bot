@@ -274,6 +274,17 @@ class OKXClient:
             if order_type == "limit" and price:
                 body_dict["px"] = str(price)
 
+            if stop_loss or take_profit:
+                attach_algo = {}
+                if take_profit:
+                    attach_algo["tpTriggerPx"] = str(take_profit)
+                    attach_algo["tpOrdPx"] = "-1"
+                if stop_loss:
+                    attach_algo["slTriggerPx"] = str(stop_loss)
+                    attach_algo["slOrdPx"] = "-1"
+                if attach_algo:
+                    body_dict["attachAlgoOrds"] = [attach_algo]
+
             body = json.dumps(body_dict, separators=(',', ':'))
             headers = self._get_auth_headers("POST", "/api/v5/trade/order", body)
             resp = requests.post(
@@ -284,17 +295,7 @@ class OKXClient:
 
             if result.get("code") == "0":
                 order_id = result["data"][0]["ordId"]
-                logger.info(f"下单成功: {side} {size} {symbol}, 订单ID: {order_id}")
-
-                if stop_loss or take_profit:
-                    import time as _time
-                    _time.sleep(1.5)
-                    try:
-                        tpsl_result = self.set_stop_take_profit(inst_id, pos_side, stop_loss, take_profit, size)
-                        logger.info(f"止盈止损条件单设置结果: {tpsl_result}")
-                    except Exception as e:
-                        logger.warning(f"设置止盈止损失败: {e}")
-
+                logger.info(f"下单成功: {side} {size} {symbol}, 订单ID: {order_id}, TP={take_profit}, SL={stop_loss}")
                 return order_id
             else:
                 logger.error(f"下单失败: {result}")
