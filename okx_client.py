@@ -288,9 +288,20 @@ class OKXClient:
 
                 if stop_loss or take_profit:
                     import time as _time
-                    _time.sleep(0.8)
+                    _time.sleep(1.5)
                     try:
-                        self.set_stop_take_profit(symbol, pos_side, stop_loss, take_profit)
+                        sl_result = None
+                        tp_result = None
+                        if stop_loss:
+                            sl_result = self._place_algo_order(inst_id, pos_side, "stop", stop_loss)
+                            logger.info(f"止损设置结果: {sl_result}")
+                        if take_profit:
+                            tp_result = self._place_algo_order(inst_id, pos_side, "profit", take_profit)
+                            logger.info(f"止盈设置结果: {tp_result}")
+                        if sl_result and sl_result.get("code") != "0":
+                            logger.warning(f"止损设置失败: {sl_result}")
+                        if tp_result and tp_result.get("code") != "0":
+                            logger.warning(f"止盈设置失败: {tp_result}")
                     except Exception as e:
                         logger.warning(f"设置止盈止损失败: {e}")
 
@@ -382,12 +393,14 @@ class OKXClient:
         """放置条件单（止盈/止损）- 使用SDK"""
         side = "sell" if pos_side == "long" else "buy"
         try:
+            algo_type = "tp" if ord_type == "profit" else "sl"
             params = dict(
                 instId=inst_id,
                 tdMode="cross",
                 side=side,
-                ordType=ord_type,
+                ordType="conditional",
                 posSide=pos_side,
+                algoType=algo_type,
                 triggerPx=str(trigger_price),
                 triggerType="1",
                 ordPx="-1",
@@ -399,9 +412,9 @@ class OKXClient:
 
             result = self.trade.place_order_algo(**params)
             if result.get("code") != "0":
-                logger.warning(f"条件单设置失败[{ord_type}]: {result}")
+                logger.warning(f"条件单设置失败[{algo_type}]: {result}")
             else:
-                logger.info(f"条件单设置成功[{ord_type}]: {trigger_price}")
+                logger.info(f"条件单设置成功[{algo_type}]: {trigger_price}")
             return result
         except Exception as e:
             logger.error(f"条件单设置异常[{ord_type}]: {e}")
