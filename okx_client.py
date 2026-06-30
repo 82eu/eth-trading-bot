@@ -56,13 +56,16 @@ class OKXClient:
         )
         sign = base64.b64encode(mac.digest()).decode()
 
-        return {
+        headers = {
             "OK-ACCESS-KEY": API_KEY,
             "OK-ACCESS-SIGN": sign,
             "OK-ACCESS-TIMESTAMP": timestamp,
             "OK-ACCESS-PASSPHRASE": PASSPHRASE,
             "Content-Type": "application/json",
         }
+        if self.simulate:
+            headers["x-simulated-trading"] = "1"
+        return headers
 
     @staticmethod
     def _normalize_symbol(symbol):
@@ -250,7 +253,7 @@ class OKXClient:
 
     def place_order(self, symbol, side, size, order_type="market", price=None, pos_side="long", leverage=None,
                     stop_loss=None, take_profit=None):
-        """下单（支持直接设置止盈止损，HTTP直连）"""
+        """下单（HTTP直连，支持止盈止损）"""
         try:
             inst_id = self._normalize_symbol(symbol)
             lev = leverage if leverage else LEVERAGE
@@ -271,13 +274,6 @@ class OKXClient:
             if order_type == "limit" and price:
                 body_dict["px"] = str(price)
 
-            if take_profit:
-                body_dict["tpTriggerPx"] = str(take_profit)
-                body_dict["tpOrdPx"] = "-1"
-            if stop_loss:
-                body_dict["slTriggerPx"] = str(stop_loss)
-                body_dict["slOrdPx"] = "-1"
-
             body = json.dumps(body_dict, separators=(',', ':'))
             headers = self._get_auth_headers("POST", "/api/v5/trade/order", body)
             resp = requests.post(
@@ -289,10 +285,19 @@ class OKXClient:
             if result.get("code") == "0":
                 order_id = result["data"][0]["ordId"]
                 logger.info(f"下单成功: {side} {size} {symbol}, 订单ID: {order_id}")
+
+                if stop_loss or take_profit:
+                    import time as _time
+                    _time.sleep(0.8)
+                    try:
+                        self.set_stop_take_profit(symbol, pos_side, stop_loss, take_profit)
+                    except Exception as e:
+                        logger.warning(f"设置止盈止损失败: {e}")
+
                 return order_id
             else:
                 logger.error(f"下单失败: {result}")
-                self.last_error = f"下单失败: {result.get('msg', '未知错误')}"
+                self.last_error = f"下单失败: {result.get('msg', '未知错误')} (code: {result.get('code', '?')})"
                 return None
         except Exception as e:
             logger.error(f"下单异常: {e}")
