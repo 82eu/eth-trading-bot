@@ -880,8 +880,8 @@
 
         function updateCalc() {
             const amt = parseFloat(document.getElementById('orderAmount').value) || 0;
-            const size = (amt * leverage) / currentPrice;
-            const margin = amt;
+            const size = amt / currentPrice;
+            const margin = amt / leverage;
             document.getElementById('calcSize').textContent = size.toFixed(3);
             document.getElementById('calcMargin').textContent = margin.toFixed(2);
         }
