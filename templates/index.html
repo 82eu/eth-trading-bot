@@ -1039,19 +1039,19 @@
             setTimeout(() => { toast.className = 'toast'; }, 3000);
         }
 
-        function setSymbol(symbol) {
-            currentSymbol = symbol;
-            document.getElementById('headerSymbol').value = symbol;
-            document.getElementById('quickSymbol').value = symbol;
-            document.getElementById('testSymbol').value = symbol;
-            document.getElementById('priceLabel').textContent = symbol + ' 价格';
-            document.getElementById('chartTitle').textContent = symbol + '-USDT-SWAP · 1小时';
-            document.getElementById('calcSizeUnit').textContent = symbol;
-            showToast('已切换至 ' + symbol, 'info');
+        function setSymbol(symbolShort) {
+            currentSymbol = symbolShort;
+            document.getElementById('headerSymbol').value = symbolShort;
+            document.getElementById('quickSymbol').value = symbolShort;
+            document.getElementById('testSymbol').value = symbolShort;
+            document.getElementById('priceLabel').textContent = symbolShort + ' 价格';
+            document.getElementById('chartTitle').textContent = symbolShort + '-USDT-SWAP · 1小时';
+            document.getElementById('calcSizeUnit').textContent = symbolShort;
+            showToast('已切换至 ' + symbolShort, 'info');
             fetch(API_BASE + '/api/set_symbol', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ symbol: symbol })
+                body: JSON.stringify({ symbol: symbolToFull(symbolShort) })
             }).then(() => {
                 fetchStatus();
                 fetchCandles();
@@ -1502,18 +1502,32 @@
         };
         let autoConfigEditing = false;
 
+        function symbolToFull(symbolShort) {
+            return symbolShort + '-USDT-SWAP';
+        }
+        function symbolToShort(symbolFull) {
+            return symbolFull.replace('-USDT-SWAP', '');
+        }
+        function mapSymbolsToFull(symbols) {
+            return symbols.map(s => symbolToFull(s));
+        }
+        function mapSymbolsToShort(symbols) {
+            return symbols.map(s => symbolToShort(s));
+        }
+
         async function testEMAStrategy(direction) {
             const tf = document.getElementById('testTf').value;
-            const symbol = document.getElementById('testSymbol').value;
+            const symbolShort = document.getElementById('testSymbol').value;
+            const symbolFull = symbolToFull(symbolShort);
             const dirText = direction === null ? '按趋势' : (direction === 'long' ? '做多' : '做空');
-            showToast(`EMA策略测试中... (${symbol} ${tf} ${dirText})`, 'info');
+            showToast(`EMA策略测试中... (${symbolShort} ${tf} ${dirText})`, 'info');
 
             try {
                 const res = await fetch(API_BASE + '/api/auto/test', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        symbol: symbol,
+                        symbol: symbolFull,
                         tf: tf,
                         direction: direction
                     })
@@ -1585,7 +1599,8 @@
         });
 
         async function saveAutoConfig() {
-            autoConfig.enabled_symbols = Array.from(document.querySelectorAll('.symbol-cb:checked')).map(c => c.value);
+            const enabledSyms = Array.from(document.querySelectorAll('.symbol-cb:checked')).map(c => c.value);
+            autoConfig.enabled_symbols = enabledSyms;
             autoConfig.enabled_tfs = Array.from(document.querySelectorAll('.tf-cb:checked')).map(c => c.value);
             autoConfig.total_amount_usdt = parseFloat(document.getElementById('autoAmount').value) || 100;
             autoConfig.tp_points = parseFloat(document.getElementById('autoTp').value) || 50;
@@ -1597,11 +1612,16 @@
             autoConfig.leverage = leverage;
             autoConfig.feishu_enabled = document.getElementById('feishuSwitch').checked;
 
+            const payload = {
+                ...autoConfig,
+                enabled_symbols: mapSymbolsToFull(enabledSyms)
+            };
+
             try {
                 const res = await fetch(API_BASE + '/api/auto/config', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(autoConfig)
+                    body: JSON.stringify(payload)
                 });
                 const data = await res.json();
                 if (data.code === 0) {
@@ -1709,6 +1729,9 @@
 
                     if (s.config) {
                         autoConfig = { ...autoConfig, ...s.config };
+                        if (s.config.enabled_symbols) {
+                            autoConfig.enabled_symbols = mapSymbolsToShort(s.config.enabled_symbols);
+                        }
 
                         if (s.config.leverage && s.config.leverage !== leverage) {
                             updateLeverageUI(s.config.leverage);
@@ -1740,8 +1763,9 @@
                             }
 
                             if (s.config.enabled_symbols) {
+                                const shortSyms = mapSymbolsToShort(s.config.enabled_symbols);
                                 document.querySelectorAll('.symbol-cb').forEach(cb => {
-                                    cb.checked = s.config.enabled_symbols.includes(cb.value);
+                                    cb.checked = shortSyms.includes(cb.value);
                                 });
                             }
 
