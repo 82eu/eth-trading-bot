@@ -14,9 +14,16 @@ PASSPHRASE = os.getenv("OKX_PASSPHRASE", "")
 # 模拟交易还是实盘
 SIMULATE = os.getenv("SIMULATE", "false").lower() == "true"
 
+# 飞书机器人配置
+FEISHU_WEBHOOK = os.getenv("FEISHU_WEBHOOK", "")
+
 # 交易参数 - 默认ETH
 SYMBOL = os.getenv("SYMBOL", "ETH-USDT-SWAP")  # 默认ETH永续合约
 TIMEFRAME = os.getenv("TIMEFRAME", "1h")
+
+# 支持的交易币种列表
+SUPPORTED_SYMBOLS = ["ETH-USDT-SWAP", "BTC-USDT-SWAP"]
+DEFAULT_SYMBOL = "ETH-USDT-SWAP"
 
 # 策略参数 - 均线策略
 FAST_MA = int(os.getenv("FAST_MA", "10"))

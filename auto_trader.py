@@ -1,5 +1,6 @@
 """
 自动交易引擎 - 基于多周期EMA策略
+支持多币种同时监控和交易
 """
 from loguru import logger
 import threading
@@ -7,7 +8,8 @@ import time
 from datetime import datetime
 from ema_strategy import EMAStrategy
 from kline_service import get_kline_service
-from config import LEVERAGE, SYMBOL
+from config import LEVERAGE, SYMBOL, SUPPORTED_SYMBOLS
+from feishu_bot import get_feishu_bot
 
 
 try:
@@ -21,9 +23,8 @@ class AutoTrader:
 
     def __init__(self, client):
         self.client = client
-        self.symbol = SYMBOL
         self.strategy = EMAStrategy()
-        self.kline_svc = get_kline_service()
+        self.feishu = get_feishu_bot()
 
         self.running = False
         self._thread = None
@@ -36,12 +37,20 @@ class AutoTrader:
             "tp_points": 50,
             "sl_points": 30,
             "leverage": LEVERAGE,
+            "feishu_enabled": True,
+            "enabled_symbols": ["ETH-USDT-SWAP"],
         }
 
         self.analysis_cache = {}
         self.signal_logs = []
         self.opened_positions = {}
         self.last_check_time = None
+        self._buffer_state = {}
+        self.buffer_width = 10
+        
+        self.kline_services = {}
+        for symbol in SUPPORTED_SYMBOLS:
+            self.kline_services[symbol] = get_kline_service(symbol)
 
     def start(self):
         if self.running:
@@ -52,6 +61,7 @@ class AutoTrader:
         self._thread.start()
         logger.info("自动交易已启动")
         self._add_log("自动交易已启动", "info")
+        self._notify_feishu("auto_start")
 
     def stop(self):
         if not self.running:
@@ -62,6 +72,59 @@ class AutoTrader:
             self._thread.join(timeout=5)
         logger.info("自动交易已停止")
         self._add_log("自动交易已停止", "info")
+        self._notify_feishu("auto_stop")
+
+    def _notify_feishu(self, event, **kwargs):
+        """飞书通知统一入口，受 feishu_enabled 开关控制"""
+        if not self.config.get("feishu_enabled", True):
+            return
+        if not self.feishu.enabled:
+            return
+        try:
+            symbol = kwargs.get("symbol", "ETH-USDT-SWAP")
+            symbol_name = symbol.split("-")[0]
+            tf = kwargs.get("tf", "")
+            
+            if event == "auto_start":
+                self.feishu.notify_auto_start()
+            elif event == "auto_stop":
+                self.feishu.notify_auto_stop()
+            elif event == "signal":
+                self.feishu.notify_signal(
+                    f"{symbol_name}[{tf}]",
+                    kwargs.get("direction", ""),
+                    kwargs.get("entry_index", 0),
+                    kwargs.get("num_entries", 0),
+                    kwargs.get("price", 0)
+                )
+            elif event == "trade_success":
+                self.feishu.notify_trade(
+                    f"{symbol_name}[{tf}]",
+                    kwargs.get("direction", ""),
+                    kwargs.get("amount", 0),
+                    kwargs.get("price", 0),
+                    kwargs.get("tp", 0),
+                    kwargs.get("sl", 0),
+                    success=True,
+                    leverage=kwargs.get("leverage", 100)
+                )
+            elif event == "trade_fail":
+                self.feishu.notify_trade(
+                    f"{symbol_name}[{tf}]",
+                    kwargs.get("direction", ""),
+                    kwargs.get("amount", 0),
+                    kwargs.get("price", 0),
+                    0, 0,
+                    success=False,
+                    leverage=kwargs.get("leverage", 100)
+                )
+            elif event == "buffer_reset":
+                self.feishu.notify_buffer_reset(
+                    f"{symbol_name}[{tf}]",
+                    kwargs.get("price", 0)
+                )
+        except Exception as e:
+            logger.debug(f"飞书通知跳过: {e}")
 
     def update_config(self, new_config):
         for k, v in new_config.items():
@@ -81,6 +144,7 @@ class AutoTrader:
             "analysis": self.analysis_cache,
             "logs": self.signal_logs[-50:],
             "last_check": self.last_check_time.isoformat() if self.last_check_time else None,
+            "buffer_state": self._buffer_state,
         }
 
     def refresh_analysis(self):
@@ -105,21 +169,42 @@ class AutoTrader:
             self._stop_event.wait(30)
 
     def _check_once(self):
-        analysis_map = self.refresh_analysis()
-
-        enabled_tfs = self.config.get("enabled_tfs", [])
-        for tf in enabled_tfs:
-            if tf not in analysis_map:
+        enabled_symbols = self.config.get("enabled_symbols", ["ETH-USDT-SWAP"])
+        for symbol in enabled_symbols:
+            if symbol not in SUPPORTED_SYMBOLS:
                 continue
-            self._check_tf_signal(tf, analysis_map)
+            analysis_map = self.refresh_analysis(symbol)
+            enabled_tfs = self.config.get("enabled_tfs", [])
+            for tf in enabled_tfs:
+                if tf not in analysis_map:
+                    continue
+                self._check_tf_signal(symbol, tf, analysis_map)
 
-    def _get_candles(self, timeframe):
+    def _get_candles(self, symbol, timeframe):
         try:
-            candles, source = self.kline_svc.fetch_klines(timeframe, 300, self.symbol)
+            kline_svc = self.kline_services.get(symbol)
+            if not kline_svc:
+                kline_svc = get_kline_service(symbol)
+                self.kline_services[symbol] = kline_svc
+            candles, source = kline_svc.fetch_klines(timeframe, 300, symbol)
             return candles
         except Exception as e:
-            logger.error(f"获取{timeframe}K线失败: {e}")
+            logger.error(f"获取{symbol} {timeframe}K线失败: {e}")
             return None
+
+    def refresh_analysis(self, symbol=None):
+        if symbol is None:
+            symbol = self.config.get("enabled_symbols", ["ETH-USDT-SWAP"])[0]
+        analysis_map = {}
+        for tf in self.strategy.TIMEFRAMES:
+            candles = self._get_candles(symbol, tf)
+            if candles:
+                analysis = self.strategy.analyze_tf(candles, tf)
+                if analysis:
+                    analysis_map[tf] = analysis
+        self.analysis_cache[symbol] = analysis_map
+        self.last_check_time = datetime.now()
+        return analysis_map
 
     def _calc_sl_with_big_tf_check(self, analysis_map, tf, direction, sl_points):
         """计算止损价，并检查小周期止损是否落在大周期EMA区间内，是则缩减为1/3"""
@@ -155,14 +240,29 @@ class AutoTrader:
 
         return sl_price
 
-    def _check_tf_signal(self, tf, analysis_map):
+    def _check_tf_signal(self, symbol, tf, analysis_map):
         analysis = analysis_map.get(tf)
         if not analysis:
             return
 
+        current_price = analysis["current_price"]
+        ema_high = analysis["ema_high"]
+        ema_low = analysis["ema_low"]
+
+        buffer_key = f"{symbol}_{tf}"
+        buf = self._buffer_state.get(buffer_key)
+        if buf is not None:
+            if current_price > buf["buffer_high"] or current_price < buf["buffer_low"]:
+                self._buffer_state[buffer_key] = None
+                logger.info(f"[{symbol}][{tf}] 价格走出缓冲带，重置预警状态")
+                self._add_log(f"[{symbol}][{tf}] 价格走出缓冲带，重置预警", "info")
+                self._notify_feishu("buffer_reset", symbol=symbol, tf=tf, price=current_price)
+            else:
+                return
+
         in_zone = analysis.get("in_zone", False)
         if not in_zone:
-            position_key_prefix = f"{tf}_"
+            position_key_prefix = f"{symbol}_{tf}_"
             keys_to_remove = [k for k in self.opened_positions if k.startswith(position_key_prefix)]
             for k in keys_to_remove:
                 del self.opened_positions[k]
@@ -172,7 +272,7 @@ class AutoTrader:
         if not trend or trend == "neutral":
             return
 
-        position_key = f"{tf}_{trend}"
+        position_key = f"{symbol}_{tf}_{trend}"
         if position_key in self.opened_positions:
             return
 
@@ -181,7 +281,6 @@ class AutoTrader:
         open_amount = total_amount / num_entries
 
         entries = self.strategy.calc_entry_levels(analysis, trend, num_entries)
-        current_price = analysis["current_price"]
 
         entry_index = -1
         for i, entry in enumerate(entries):
@@ -199,11 +298,13 @@ class AutoTrader:
         sl_price = self._calc_sl_with_big_tf_check(analysis_map, tf, trend, self.config["sl_points"])
         tp_price = self.strategy.calc_take_profit(analysis, trend, self.config["tp_points"])
 
-        self._add_log(f"[{tf}] {trend}信号, 入场{entry_index+1}/{num_entries}, 价格{current_price:.2f}", "signal")
+        symbol_name = symbol.split("-")[0]
+        self._add_log(f"[{symbol_name}][{tf}] {trend}信号, 入场{entry_index+1}/{num_entries}, 价格{current_price:.2f}", "signal")
+        self._notify_feishu("signal", symbol=symbol, tf=tf, direction=trend, entry_index=entry_index+1, num_entries=num_entries, price=current_price)
 
         side = "buy" if trend == "long" else "sell"
         order_id = self.client.place_order_usdt(
-            self.symbol, side, open_amount,
+            symbol, side, open_amount,
             pos_side=trend,
             stop_loss=sl_price,
             take_profit=tp_price,
@@ -212,37 +313,46 @@ class AutoTrader:
 
         if order_id:
             self.opened_positions[position_key] = {
+                "symbol": symbol,
                 "entry_index": entry_index,
                 "price": current_price,
                 "time": datetime.now().isoformat(),
                 "order_id": order_id,
             }
-            self._add_log(f"[{tf}] 开{trend}成功 {open_amount}U @ {current_price:.2f}", "success")
+            self._buffer_state[buffer_key] = {
+                "buffer_low": round(ema_low - self.buffer_width, 2),
+                "buffer_high": round(ema_high + self.buffer_width, 2),
+            }
+            self._add_log(f"[{symbol_name}][{tf}] 开{trend}成功 {open_amount}U @ {current_price:.2f}, 缓冲带[{round(ema_low - self.buffer_width, 2)}, {round(ema_high + self.buffer_width, 2)}]", "success")
+            self._notify_feishu("trade_success", symbol=symbol, tf=tf, direction=trend, amount=open_amount, price=current_price, tp=tp_price, sl=sl_price, leverage=self.config["leverage"])
         else:
-            self._add_log(f"[{tf}] 开单失败", "error")
+            self._add_log(f"[{symbol_name}][{tf}] 开单失败", "error")
+            self._notify_feishu("trade_fail", symbol=symbol, tf=tf, direction=trend, amount=open_amount, price=current_price, leverage=self.config["leverage"])
 
-    def test_open_order(self, timeframe, direction=None):
-        candles = self._get_candles(timeframe)
+    def test_open_order(self, timeframe, direction=None, symbol=None):
+        if symbol is None:
+            symbol = self.config.get("enabled_symbols", ["ETH-USDT-SWAP"])[0]
+        candles = self._get_candles(symbol, timeframe)
         if not candles:
-            msg = f"获取{timeframe}K线失败"
+            msg = f"获取{symbol} {timeframe}K线失败"
             logger.error(msg)
-            self._add_log(f"[测试][{timeframe}] {msg}", "error")
+            self._add_log(f"[测试][{symbol.split('-')[0]}][{timeframe}] {msg}", "error")
             return False, msg
 
         analysis = self.strategy.analyze_tf(candles, timeframe)
         if not analysis:
             msg = "策略分析失败"
             logger.error(msg)
-            self._add_log(f"[测试][{timeframe}] {msg}", "error")
+            self._add_log(f"[测试][{symbol.split('-')[0]}][{timeframe}] {msg}", "error")
             return False, msg
 
-        analysis_map = self.refresh_analysis() or {timeframe: analysis}
+        analysis_map = self.refresh_analysis(symbol) or {timeframe: analysis}
 
         if direction is None:
             direction = self.strategy.get_trend_direction(analysis_map, timeframe)
             if not direction or direction == "neutral":
                 msg = "无法判断趋势"
-                self._add_log(f"[测试][{timeframe}] {msg}", "error")
+                self._add_log(f"[测试][{symbol.split('-')[0]}][{timeframe}] {msg}", "error")
                 return False, msg
 
         total_amount = self.config.get("total_amount_usdt", 100)
@@ -253,13 +363,14 @@ class AutoTrader:
 
         current_price = analysis["current_price"]
         leverage = self.config.get("leverage", 10)
-        logger.info(f"[测试][{timeframe}] 开{direction}, 金额{open_amount}U, 杠杆{leverage}x, 价格{current_price:.2f}, 止损{sl_price:.2f}, 止盈{tp_price:.2f}")
-        self._add_log(f"[测试][{timeframe}] 开{direction}, 金额{open_amount}U, 价格{current_price:.2f}, 止损{sl_price:.2f}, 止盈{tp_price:.2f}", "signal")
+        symbol_name = symbol.split("-")[0]
+        logger.info(f"[测试][{symbol_name}][{timeframe}] 开{direction}, 金额{open_amount}U, 杠杆{leverage}x, 价格{current_price:.2f}, 止损{sl_price:.2f}, 止盈{tp_price:.2f}")
+        self._add_log(f"[测试][{symbol_name}][{timeframe}] 开{direction}, 金额{open_amount}U, 价格{current_price:.2f}, 止损{sl_price:.2f}, 止盈{tp_price:.2f}", "signal")
 
         side = "buy" if direction == "long" else "sell"
         try:
             order_id = self.client.place_order_usdt(
-                self.symbol, side, open_amount,
+                symbol, side, open_amount,
                 pos_side=direction,
                 stop_loss=sl_price,
                 take_profit=tp_price,
@@ -267,13 +378,14 @@ class AutoTrader:
             )
         except Exception as e:
             msg = f"下单异常: {e}"
-            logger.error(f"[测试][{timeframe}] {msg}")
-            self._add_log(f"[测试][{timeframe}] {msg}", "error")
+            logger.error(f"[测试][{symbol_name}][{timeframe}] {msg}")
+            self._add_log(f"[测试][{symbol_name}][{timeframe}] {msg}", "error")
             return False, msg
 
         if order_id:
-            self._add_log(f"[测试][{timeframe}] 开{direction}成功 {open_amount}U", "success")
+            self._add_log(f"[测试][{symbol_name}][{timeframe}] 开{direction}成功 {open_amount}U", "success")
             return True, {
+                "symbol": symbol,
                 "direction": direction,
                 "amount": open_amount,
                 "price": current_price,
@@ -295,7 +407,7 @@ class AutoTrader:
                 msg = f"余额不足: 可用 {avail_eq:.2f} USDT, 需要保证金 {margin_needed:.2f} USDT ({open_amount:.2f}U合约价值 × {leverage}x杠杆)"
             else:
                 msg = "开单失败（交易所返回错误，请看日志）"
-            self._add_log(f"[测试][{timeframe}] {msg}", "error")
+            self._add_log(f"[测试][{symbol_name}][{timeframe}] {msg}", "error")
             return False, msg
 
     def _add_log(self, msg, level="info"):

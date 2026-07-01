@@ -9,6 +9,7 @@ from loguru import logger
 import os
 import sys
 from datetime import datetime
+from config import SUPPORTED_SYMBOLS, DEFAULT_SYMBOL
 
 load_dotenv()
 
@@ -33,6 +34,8 @@ trading_status = {
     "total_trades": 0,
     "win_trades": 0,
     "symbol": "ETH-USDT-SWAP",
+    "current_symbol": DEFAULT_SYMBOL,  # 当前选择的币种
+    "enabled_symbols": [DEFAULT_SYMBOL],  # 允许自动交易的币种列表
     "timeframe": "1h",
     "fast_ma": 10,
     "slow_ma": 50,
@@ -86,6 +89,38 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/api/symbols")
+def get_symbols():
+    """获取支持的币种列表"""
+    return jsonify({
+        "code": 0,
+        "data": {
+            "supported_symbols": SUPPORTED_SYMBOLS,
+            "default_symbol": DEFAULT_SYMBOL,
+            "current_symbol": trading_status.get("current_symbol", DEFAULT_SYMBOL)
+        }
+    })
+
+
+@app.route("/api/set_symbol", methods=["POST"])
+def set_symbol():
+    """设置当前币种"""
+    data = request.json or {}
+    symbol = data.get("symbol")
+    
+    if not symbol:
+        return jsonify({"code": 1, "msg": "缺少symbol参数"}), 400
+    
+    if symbol not in SUPPORTED_SYMBOLS:
+        return jsonify({"code": 1, "msg": f"不支持的币种: {symbol}，支持的币种: {SUPPORTED_SYMBOLS}"}), 400
+    
+    global trading_status
+    trading_status["current_symbol"] = symbol
+    trading_status["symbol"] = symbol  # 兼容旧字段
+    
+    return jsonify({"code": 0, "msg": f"币种已切换为 {symbol}", "data": {"symbol": symbol}})
+
+
 @app.route("/api/status")
 def get_status():
     """获取当前交易状态"""
@@ -94,13 +129,13 @@ def get_status():
     if not MOCK_MODE:
         try:
             from okx_client import OKXClient
-            from config import SYMBOL
             client = OKXClient()
-            ticker = client.get_ticker(SYMBOL)
+            symbol = trading_status.get("current_symbol", DEFAULT_SYMBOL)
+            ticker = client.get_ticker(symbol)
             if ticker:
                 trading_status["current_price"] = ticker["last"]
 
-            positions = client.get_position(SYMBOL)
+            positions = client.get_position(symbol)
             if positions and len(positions) > 0:
                 for pos in positions:
                     if float(pos.get("pos", 0)) != 0:
@@ -133,7 +168,12 @@ def get_status():
 @app.route("/api/candles")
 def get_candles():
     """获取K线数据（多数据源兜底）"""
-    symbol = request.args.get("symbol", "ETH-USDT-SWAP")
+    symbol = request.args.get("symbol") or trading_status.get("current_symbol", DEFAULT_SYMBOL)
+    
+    # 校验symbol
+    if symbol not in SUPPORTED_SYMBOLS:
+        return jsonify({"code": 1, "msg": f"不支持的币种: {symbol}"}), 400
+    
     timeframe = request.args.get("timeframe", "1h")
     limit = int(request.args.get("limit", 100))
 
@@ -275,7 +315,14 @@ def place_order():
     """
     global trading_status, trade_history
     data = request.json or {}
-    symbol = data.get("symbol", "ETH-USDT-SWAP")
+    
+    # 获取symbol参数，优先使用传入的symbol，否则使用current_symbol
+    symbol = data.get("symbol") or trading_status.get("current_symbol", DEFAULT_SYMBOL)
+    
+    # 校验symbol
+    if symbol not in SUPPORTED_SYMBOLS:
+        return jsonify({"code": 1, "msg": f"不支持的币种: {symbol}，支持的币种: {SUPPORTED_SYMBOLS}"}), 400
+    
     side = data.get("side", "buy")
     amount_usdt = float(data.get("amount_usdt", 100))
     order_type = data.get("type", "market")
@@ -361,7 +408,14 @@ def close_position():
     """平仓"""
     global trading_status, trade_history
     data = request.json or {}
-    symbol = data.get("symbol", "ETH-USDT-SWAP")
+    
+    # 获取symbol参数，优先使用传入的symbol，否则使用current_symbol
+    symbol = data.get("symbol") or trading_status.get("current_symbol", DEFAULT_SYMBOL)
+    
+    # 校验symbol
+    if symbol not in SUPPORTED_SYMBOLS:
+        return jsonify({"code": 1, "msg": f"不支持的币种: {symbol}，支持的币种: {SUPPORTED_SYMBOLS}"}), 400
+    
     amount_usdt = data.get("amount_usdt")
 
     if MOCK_MODE:
@@ -684,6 +738,7 @@ def auto_test():
     测试EMA策略开单
     手动触发一次策略逻辑，用当前价格和配置开一单测试
     body: {
+        "symbol": "ETH-USDT-SWAP",  // 可选，不传则使用current_symbol
         "tf": "5m",  // 测试哪个周期
         "direction": "long" | "short"  // 可选，不传则按策略趋势
     }
@@ -693,11 +748,19 @@ def auto_test():
         return jsonify({"code": 1, "msg": "未初始化"}), 400
 
     data = request.json or {}
+    
+    # 获取symbol参数
+    symbol = data.get("symbol") or trading_status.get("current_symbol", DEFAULT_SYMBOL)
+    
+    # 校验symbol
+    if symbol not in SUPPORTED_SYMBOLS:
+        return jsonify({"code": 1, "msg": f"不支持的币种: {symbol}，支持的币种: {SUPPORTED_SYMBOLS}"}), 400
+    
     tf = data.get("tf", "5m")
     direction = data.get("direction")
 
     try:
-        success, result = at.test_open_order(tf, direction)
+        success, result = at.test_open_order(tf, direction, symbol=symbol)
         if success:
             return jsonify({"code": 0, "msg": "测试开单成功", "data": result})
         else:
@@ -710,6 +773,7 @@ def auto_test():
 @app.route("/api/auto/config", methods=["POST"])
 def auto_config():
     """更新自动交易配置"""
+    global trading_status
     data = request.json or {}
     at = get_auto_trader()
 
@@ -726,8 +790,23 @@ def auto_config():
         config["sl_points"] = float(data["sl_points"])
     if "leverage" in data:
         config["leverage"] = int(data["leverage"])
+    if "feishu_enabled" in data:
+        config["feishu_enabled"] = bool(data["feishu_enabled"])
+    
+    # 处理enabled_symbols参数
+    if "enabled_symbols" in data:
+        enabled_symbols = data["enabled_symbols"]
+        if not isinstance(enabled_symbols, list):
+            return jsonify({"code": 1, "msg": "enabled_symbols必须是数组"}), 400
+        
+        # 校验所有symbol是否支持
+        invalid_symbols = [s for s in enabled_symbols if s not in SUPPORTED_SYMBOLS]
+        if invalid_symbols:
+            return jsonify({"code": 1, "msg": f"不支持的币种: {invalid_symbols}，支持的币种: {SUPPORTED_SYMBOLS}"}), 400
+        
+        config["enabled_symbols"] = enabled_symbols
+        trading_status["enabled_symbols"] = enabled_symbols
 
-    global trading_status
     if "leverage" in config:
         trading_status["leverage"] = config["leverage"]
         if not MOCK_MODE:
