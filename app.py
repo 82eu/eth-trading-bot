@@ -45,6 +45,19 @@ trading_status = {
 trade_history = []
 
 
+def normalize_symbol(symbol):
+    """规范化币种符号，支持简写（如 BTC -> BTC-USDT-SWAP）"""
+    if not symbol:
+        return DEFAULT_SYMBOL
+    symbol = symbol.upper().strip()
+    if symbol in SUPPORTED_SYMBOLS:
+        return symbol
+    for supported in SUPPORTED_SYMBOLS:
+        if supported.startswith(symbol + '-') or supported.startswith(symbol + '_'):
+            return supported
+    return symbol
+
+
 def generate_mock_candles(count=100, symbol="ETH-USDT-SWAP"):
     """生成模拟K线"""
     import random
@@ -111,9 +124,10 @@ def set_symbol():
     if not symbol:
         return jsonify({"code": 1, "msg": "缺少symbol参数"}), 400
     
+    symbol = normalize_symbol(symbol)
     if symbol not in SUPPORTED_SYMBOLS:
         return jsonify({"code": 1, "msg": f"不支持的币种: {symbol}，支持的币种: {SUPPORTED_SYMBOLS}"}), 400
-    
+
     global trading_status
     trading_status["current_symbol"] = symbol
     trading_status["symbol"] = symbol  # 兼容旧字段
@@ -169,6 +183,7 @@ def get_status():
 def get_candles():
     """获取K线数据（多数据源兜底）"""
     symbol = request.args.get("symbol") or trading_status.get("current_symbol", DEFAULT_SYMBOL)
+    symbol = normalize_symbol(symbol)
     
     # 校验symbol
     if symbol not in SUPPORTED_SYMBOLS:
@@ -318,6 +333,7 @@ def place_order():
     
     # 获取symbol参数，优先使用传入的symbol，否则使用current_symbol
     symbol = data.get("symbol") or trading_status.get("current_symbol", DEFAULT_SYMBOL)
+    symbol = normalize_symbol(symbol)
     
     # 校验symbol
     if symbol not in SUPPORTED_SYMBOLS:
@@ -411,6 +427,7 @@ def close_position():
     
     # 获取symbol参数，优先使用传入的symbol，否则使用current_symbol
     symbol = data.get("symbol") or trading_status.get("current_symbol", DEFAULT_SYMBOL)
+    symbol = normalize_symbol(symbol)
     
     # 校验symbol
     if symbol not in SUPPORTED_SYMBOLS:
@@ -751,6 +768,7 @@ def auto_test():
     
     # 获取symbol参数
     symbol = data.get("symbol") or trading_status.get("current_symbol", DEFAULT_SYMBOL)
+    symbol = normalize_symbol(symbol)
     
     # 校验symbol
     if symbol not in SUPPORTED_SYMBOLS:
@@ -798,6 +816,9 @@ def auto_config():
         enabled_symbols = data["enabled_symbols"]
         if not isinstance(enabled_symbols, list):
             return jsonify({"code": 1, "msg": "enabled_symbols必须是数组"}), 400
+        
+        # 规范化所有symbol
+        enabled_symbols = [normalize_symbol(s) for s in enabled_symbols]
         
         # 校验所有symbol是否支持
         invalid_symbols = [s for s in enabled_symbols if s not in SUPPORTED_SYMBOLS]
