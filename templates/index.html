@@ -1024,7 +1024,7 @@
 
     <script>
         let candleChart = null;
-        let currentPrice = 3500;
+        let currentPrice = 0;
         let currentDirection = 'long';
         let currentSymbol = 'ETH';
         let leverage = 10;
@@ -1075,7 +1075,8 @@
             const amt = parseFloat(document.getElementById('orderAmount').value) || 0;
             const size = amt / currentPrice;
             const margin = amt / leverage;
-            document.getElementById('calcSize').textContent = size.toFixed(3);
+            const decimals = currentSymbol === 'BTC' ? 6 : 4;
+            document.getElementById('calcSize').textContent = size.toFixed(decimals);
             document.getElementById('calcMargin').textContent = margin.toFixed(2);
         }
 
@@ -1136,7 +1137,7 @@
             try {
                 const body = {
                     action: action,
-                    symbol: 'ETH-USDT-SWAP',
+                    symbol: currentSymbol + '-USDT-SWAP',
                     pos_side: currentDirection || 'long'
                 };
                 if (slPrice) body.sl_price = parseFloat(slPrice);
@@ -1196,7 +1197,11 @@
                 const data = await res.json();
                 if (data.code === 0) {
                     const s = data.data;
-                    currentPrice = s.current_price || 3500;
+                    currentPrice = s.current_price || 0;
+                    if (!currentPrice) {
+                        console.warn('当前价格未获取到，暂不更新计算');
+                        return;
+                    }
 
                     document.getElementById('currentPrice').textContent = formatPrice(currentPrice);
                     updateCalc();
