@@ -189,56 +189,31 @@ class OKXClient:
         """USDT金额转合约张数
         usdt_amount: 合约价值（用户输入的金额就是要开的仓位大小）
         OKX合约面值: ETH=0.1ETH/张, BTC=0.01BTC/张
-        张数必须是正整数，最小1张
         """
-        try:
-            if price is None:
-                ticker = self.get_ticker(symbol)
-                if not ticker:
-                    self.last_error = "无法获取行情价格"
-                    return None
-                price = ticker["last"]
-
-            if not price or price <= 0:
-                self.last_error = f"价格无效: {price}"
+        if price is None:
+            ticker = self.get_ticker(symbol)
+            if not ticker:
+                self.last_error = "无法获取行情价格"
                 return None
+            price = ticker["last"]
 
-            lev = leverage if leverage else LEVERAGE
-            if not lev or lev <= 0:
-                self.last_error = f"杠杆无效: {lev}"
-                return None
+        lev = leverage if leverage else LEVERAGE
+        asset_amount = usdt_amount / price
+        asset_name = symbol.split("-")[0]
 
-            if not usdt_amount or usdt_amount <= 0:
-                self.last_error = f"金额无效: {usdt_amount}"
-                return None
+        if "BTC" in symbol:
+            contract_size = 0.01
+            size = round(asset_amount / contract_size, 3)
+        elif "ETH" in symbol:
+            contract_size = 0.1
+            size = round(asset_amount / contract_size, 2)
+        else:
+            contract_size = 0.1
+            size = round(asset_amount / contract_size, 2)
 
-            asset_amount = usdt_amount / price
-            asset_name = symbol.split("-")[0]
-
-            if "BTC" in symbol:
-                contract_size = 0.01
-            elif "ETH" in symbol:
-                contract_size = 0.1
-            else:
-                contract_size = 0.1
-
-            raw_size = asset_amount / contract_size
-            size = int(raw_size)
-
-            if size < 1:
-                msg = f"金额不足: {usdt_amount}U × {lev}x杠杆 = {raw_size:.2f}张合约，最小1张起"
-                logger.warning(msg)
-                self.last_error = msg
-                return None
-
-            margin = usdt_amount / lev
-            logger.info(f"换算: {usdt_amount} USDT合约价值 = {asset_amount:.6f} {asset_name} = {size} 张, 保证金: {margin:.2f}U (杠杆: {lev}x, 面值: {contract_size})")
-            return size
-        except Exception as e:
-            msg = f"计算张数异常: {e}, symbol={symbol}, amount={usdt_amount}, price={price}, lev={leverage}"
-            logger.error(msg)
-            self.last_error = str(e)
-            return None
+        margin = usdt_amount / lev
+        logger.info(f"换算: {usdt_amount} USDT合约价值 = {asset_amount:.6f} {asset_name} = {size} 张, 保证金: {margin:.2f}U (杠杆: {lev}x, 面值: {contract_size})")
+        return size
 
     def place_order_usdt(self, symbol, side, usdt_amount, order_type="market",
                          price=None, pos_side=None, stop_loss=None, take_profit=None, leverage=None):
@@ -251,6 +226,13 @@ class OKXClient:
 
         current_price = ticker["last"]
         lev = leverage if leverage else LEVERAGE
+        size = self.usdt_to_size(symbol, usdt_amount, current_price, lev)
+
+        if size is None or size <= 0:
+            if not self.last_error:
+                self.last_error = f"计算张数失败: {size}"
+            logger.error(self.last_error)
+            return None
 
         balance = self.get_balance()
         if balance:
@@ -270,17 +252,15 @@ class OKXClient:
         if pos_side is None:
             pos_side = "long" if side == "buy" else "short"
 
-        logger.info(f"下单: {side} {usdt_amount}U @ {current_price} ({pos_side}, {lev}x)")
-        order_id = self.place_order(symbol, side, usdt_amount, order_type, price, pos_side, lev,
-                                    stop_loss=stop_loss, take_profit=take_profit, tgt_ccy="quote_ccy")
+        logger.info(f"下单: {side} {usdt_amount}U = {size}张 @ {current_price} ({pos_side}, {lev}x)")
+        order_id = self.place_order(symbol, side, size, order_type, price, pos_side, lev,
+                                    stop_loss=stop_loss, take_profit=take_profit)
 
         return order_id
 
     def place_order(self, symbol, side, size, order_type="market", price=None, pos_side="long", leverage=None,
-                    stop_loss=None, take_profit=None, tgt_ccy=None):
-        """下单（HTTP直连，支持止盈止损）
-        tgt_ccy: "quote_ccy"表示sz以USDT计价，"base_ccy"表示sz以币数计价，None表示默认（张数）
-        """
+                    stop_loss=None, take_profit=None):
+        """下单（HTTP直连，支持止盈止损）"""
         try:
             inst_id = self._normalize_symbol(symbol)
             lev = leverage if leverage else LEVERAGE
@@ -300,8 +280,6 @@ class OKXClient:
                 "sz": str(size),
                 "posSide": pos_side,
             }
-            if tgt_ccy:
-                body_dict["tgtCcy"] = tgt_ccy
             if order_type == "limit" and price:
                 body_dict["px"] = str(price)
 
