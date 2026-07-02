@@ -30,6 +30,7 @@ class OKXClient:
             simulation=SIMULATE
         )
         self.simulate = SIMULATE
+        self._instrument_cache = {}
 
     def _get_auth_headers(self, method, path, body=""):
         """
@@ -188,7 +189,7 @@ class OKXClient:
     def usdt_to_size(self, symbol, usdt_amount, price=None, leverage=None):
         """USDT金额转合约张数
         usdt_amount: 合约价值（用户输入的金额就是要开的仓位大小）
-        OKX合约面值: ETH=0.1ETH/张, BTC=0.01BTC/张
+        根据OKX合约规格动态计算面值、精度和最小下单量
         """
         if price is None:
             ticker = self.get_ticker(symbol)
@@ -201,22 +202,41 @@ class OKXClient:
         asset_amount = usdt_amount / price
         asset_name = symbol.split("-")[0]
 
-        if "BTC" in symbol:
-            contract_size = 0.01
-            size = round(asset_amount / contract_size, 3)
-        elif "ETH" in symbol:
-            contract_size = 0.1
-            size = round(asset_amount / contract_size, 2)
+        inst = self.get_instruments(symbol)
+        if inst:
+            contract_size = float(inst.get("ctVal", "0.1"))
+            lot_sz = float(inst.get("lotSz", "1"))
+            min_sz = float(inst.get("minSz", "1"))
+            raw_size = asset_amount / contract_size
+            size = round(raw_size / lot_sz) * lot_sz
+            if size < min_sz:
+                self.last_error = f"金额不足: {usdt_amount}U = {raw_size:.6f}张，最小{min_sz}张起"
+                return None
+            if lot_sz >= 1:
+                size = int(size)
         else:
-            contract_size = 0.1
-            size = round(asset_amount / contract_size, 2)
-
-        if size <= 0:
-            self.last_error = f"金额不足: {usdt_amount}U = {size}张"
-            return None
+            if "BTC" in symbol:
+                contract_size = 0.01
+                lot_sz = 1
+                min_sz = 1
+            elif "ETH" in symbol:
+                contract_size = 0.1
+                lot_sz = 0.1
+                min_sz = 0.1
+            else:
+                contract_size = 0.1
+                lot_sz = 0.1
+                min_sz = 0.1
+            raw_size = asset_amount / contract_size
+            size = round(raw_size / lot_sz) * lot_sz
+            if size < min_sz:
+                self.last_error = f"金额不足: {usdt_amount}U = {raw_size:.6f}张，最小{min_sz}张起"
+                return None
+            if lot_sz >= 1:
+                size = int(size)
 
         margin = usdt_amount / lev
-        logger.info(f"换算: {usdt_amount} USDT合约价值 = {asset_amount:.6f} {asset_name} = {size} 张, 保证金: {margin:.2f}U (杠杆: {lev}x, 面值: {contract_size})")
+        logger.info(f"换算: {usdt_amount} USDT合约价值 = {asset_amount:.6f} {asset_name} = {size} 张 (原始{raw_size:.4f}张, 精度{lot_sz}), 保证金: {margin:.2f}U (杠杆: {lev}x, 面值: {contract_size})")
         return size
 
     def place_order_usdt(self, symbol, side, usdt_amount, order_type="market",
@@ -327,9 +347,11 @@ class OKXClient:
             return None
 
     def get_instruments(self, symbol):
-        """获取合约规格信息"""
+        """获取合约规格信息（带缓存）"""
         try:
             inst_id = self._normalize_symbol(symbol)
+            if inst_id in self._instrument_cache:
+                return self._instrument_cache[inst_id]
             params = {"instId": inst_id, "instType": "SWAP"}
             resp = requests.get(f"{self.base_url}/api/v5/public/instruments", params=params, timeout=10)
             result = resp.json()
@@ -337,6 +359,7 @@ class OKXClient:
                 data = result.get("data", [])
                 if data:
                     inst = data[0]
+                    self._instrument_cache[inst_id] = inst
                     logger.info(f"合约规格[{inst_id}]: 面值={inst.get('ctVal')}{inst.get('ctValCcy')}, 最小下单量={inst.get('minSz')}, 下单精度={inst.get('lotSz')}")
                     return inst
             return None
