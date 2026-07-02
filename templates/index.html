@@ -1073,10 +1073,14 @@
 
         function updateCalc() {
             const amt = parseFloat(document.getElementById('orderAmount').value) || 0;
-            const size = amt / currentPrice;
+            const contractValue = amt * leverage;
+            const btcCount = contractValue / (currentPrice || 1);
+            const contractSize = currentSymbol === 'BTC' ? 0.01 : 0.1;
+            const lots = currentPrice ? Math.floor(btcCount / contractSize) : 0;
             const margin = amt / leverage;
             const decimals = currentSymbol === 'BTC' ? 6 : 4;
-            document.getElementById('calcSize').textContent = size.toFixed(decimals);
+            document.getElementById('calcSize').textContent = lots > 0 ? lots + ' 张 ≈ ' + btcCount.toFixed(decimals) : btcCount.toFixed(decimals);
+            document.getElementById('calcSizeUnit').textContent = currentSymbol;
             document.getElementById('calcMargin').textContent = margin.toFixed(2);
         }
 
