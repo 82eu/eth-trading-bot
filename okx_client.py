@@ -189,6 +189,7 @@ class OKXClient:
         """USDT金额转合约张数
         usdt_amount: 合约价值（用户输入的金额就是要开的仓位大小）
         OKX合约面值: ETH=0.1ETH/张, BTC=0.01BTC/张
+        张数必须是正整数，最小1张
         """
         if price is None:
             ticker = self.get_ticker(symbol)
@@ -202,13 +203,19 @@ class OKXClient:
 
         if "BTC" in symbol:
             contract_size = 0.01
-            size = round(asset_amount / contract_size, 3)
+            raw_size = asset_amount / contract_size
         elif "ETH" in symbol:
             contract_size = 0.1
-            size = round(asset_amount / contract_size, 2)
+            raw_size = asset_amount / contract_size
         else:
             contract_size = 0.1
-            size = round(asset_amount / contract_size, 2)
+            raw_size = asset_amount / contract_size
+
+        size = int(raw_size)
+        if size < 1:
+            logger.warning(f"张数不足1张: {raw_size:.2f} 张, 最小1张起")
+            self.last_error = f"金额不足: {usdt_amount}U × {lev}x杠杆 = {raw_size:.2f}张，合约，最小1张起"
+            return None
 
         margin = usdt_amount / lev
         logger.info(f"换算: {usdt_amount} USDT合约价值 = {asset_amount:.6f} {asset_name} = {size} 张, 保证金: {margin:.2f}U (杠杆: {lev}x, 面值: {contract_size})")
