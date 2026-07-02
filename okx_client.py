@@ -211,6 +211,10 @@ class OKXClient:
             contract_size = 0.1
             size = round(asset_amount / contract_size, 2)
 
+        if size <= 0:
+            self.last_error = f"金额不足: {usdt_amount}U = {size}张"
+            return None
+
         margin = usdt_amount / lev
         logger.info(f"换算: {usdt_amount} USDT合约价值 = {asset_amount:.6f} {asset_name} = {size} 张, 保证金: {margin:.2f}U (杠杆: {lev}x, 面值: {contract_size})")
         return size
@@ -308,11 +312,36 @@ class OKXClient:
                 return order_id
             else:
                 logger.error(f"下单失败[{symbol}]: {result}")
-                self.last_error = f"下单失败[{symbol}]: {result.get('msg', '未知错误')} (code: {result.get('code', '?')})"
+                data_list = result.get('data', [])
+                detail = ''
+                if data_list:
+                    s_code = data_list[0].get('sCode', '')
+                    s_msg = data_list[0].get('sMsg', '')
+                    if s_code or s_msg:
+                        detail = f', 详情: {s_code} {s_msg}'
+                self.last_error = f"下单失败[{symbol}]: {result.get('msg', '未知错误')} (code: {result.get('code', '?')}){detail}"
                 return None
         except Exception as e:
             logger.error(f"下单异常: {e}")
             self.last_error = f"下单异常: {e}"
+            return None
+
+    def get_instruments(self, symbol):
+        """获取合约规格信息"""
+        try:
+            inst_id = self._normalize_symbol(symbol)
+            params = {"instId": inst_id, "instType": "SWAP"}
+            resp = requests.get(f"{self.base_url}/api/v5/public/instruments", params=params, timeout=10)
+            result = resp.json()
+            if result.get("code") == "0":
+                data = result.get("data", [])
+                if data:
+                    inst = data[0]
+                    logger.info(f"合约规格[{inst_id}]: 面值={inst.get('ctVal')}{inst.get('ctValCcy')}, 最小下单量={inst.get('minSz')}, 下单精度={inst.get('lotSz')}")
+                    return inst
+            return None
+        except Exception as e:
+            logger.error(f"获取合约规格异常: {e}")
             return None
 
     def close_position_usdt(self, symbol, side, usdt_amount, pos_side=None):
