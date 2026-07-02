@@ -206,15 +206,19 @@ class AutoTrader:
         self.last_check_time = datetime.now()
         return analysis_map
 
-    def _calc_sl_with_big_tf_check(self, analysis_map, tf, direction, sl_points):
+    def _calc_sl_with_big_tf_check(self, analysis_map, tf, direction, sl_points, current_price=None):
         """计算止损价，并检查小周期止损是否落在大周期EMA区间内，是则缩减为1/3"""
         small_analysis = analysis_map.get(tf)
         if not small_analysis:
-            base = 1600 if direction == "long" else 3600
-            return base - sl_points if direction == "long" else base + sl_points
+            if current_price:
+                return current_price - sl_points if direction == "long" else current_price + sl_points
+            # 无分析数据也无当前价格，无法计算
+            logger.warning(f"[{tf}] 无分析数据且无当前价格，止损计算失败")
+            return None
 
         sl_price = self.strategy.calc_stop_loss(small_analysis, direction, sl_points)
-        current_price = small_analysis["current_price"]
+        if current_price is None:
+            current_price = small_analysis["current_price"]
 
         tf_order = self.strategy.TIMEFRAMES
         if tf not in tf_order:
@@ -358,10 +362,9 @@ class AutoTrader:
         total_amount = self.config.get("total_amount_usdt", 100)
         open_amount = total_amount
 
-        sl_price = self._calc_sl_with_big_tf_check(analysis_map, timeframe, direction, self.config["sl_points"])
-        tp_price = self.strategy.calc_take_profit(analysis, direction, self.config["tp_points"])
-
         current_price = analysis["current_price"]
+        sl_price = self._calc_sl_with_big_tf_check(analysis_map, timeframe, direction, self.config["sl_points"], current_price)
+        tp_price = self.strategy.calc_take_profit(analysis, direction, self.config["tp_points"])
         leverage = self.config.get("leverage", 10)
         symbol_name = symbol.split("-")[0]
         logger.info(f"[测试][{symbol_name}][{timeframe}] 开{direction}, 金额{open_amount}U, 杠杆{leverage}x, 价格{current_price:.2f}, 止损{sl_price:.2f}, 止盈{tp_price:.2f}")

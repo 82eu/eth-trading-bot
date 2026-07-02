@@ -197,20 +197,21 @@ class OKXClient:
             price = ticker["last"]
 
         lev = leverage if leverage else LEVERAGE
-        eth_amount = usdt_amount / price
+        asset_amount = usdt_amount / price
+        asset_name = symbol.split("-")[0]
 
         if "BTC" in symbol:
             contract_size = 0.01
-            size = round(eth_amount / contract_size, 3)
+            size = round(asset_amount / contract_size, 3)
         elif "ETH" in symbol:
             contract_size = 0.1
-            size = round(eth_amount / contract_size, 2)
+            size = round(asset_amount / contract_size, 2)
         else:
             contract_size = 0.1
-            size = round(eth_amount / contract_size, 2)
+            size = round(asset_amount / contract_size, 2)
 
         margin = usdt_amount / lev
-        logger.info(f"换算: {usdt_amount} USDT合约价值 = {eth_amount:.6f} ETH = {size} 张, 保证金: {margin:.2f}U (杠杆: {lev}x, 面值: {contract_size})")
+        logger.info(f"换算: {usdt_amount} USDT合约价值 = {asset_amount:.6f} {asset_name} = {size} 张, 保证金: {margin:.2f}U (杠杆: {lev}x, 面值: {contract_size})")
         return size
 
     def place_order_usdt(self, symbol, side, usdt_amount, order_type="market",
