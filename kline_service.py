@@ -211,11 +211,14 @@ class KlineService:
         return result
 
 
-_kline_service_instance = None
+_kline_service_instances = {}
 
 
-def get_kline_service(symbol="ETH-USDT-SWAP"):
-    global _kline_service_instance
-    if _kline_service_instance is None:
-        _kline_service_instance = KlineService(symbol)
-    return _kline_service_instance
+def get_kline_service(symbol=None):
+    if symbol is None:
+        from config import DEFAULT_SYMBOL
+        symbol = DEFAULT_SYMBOL
+    global _kline_service_instances
+    if symbol not in _kline_service_instances:
+        _kline_service_instances[symbol] = KlineService(symbol)
+    return _kline_service_instances[symbol]

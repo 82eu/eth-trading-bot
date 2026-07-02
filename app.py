@@ -26,14 +26,14 @@ trading_status = {
     "position": 0,
     "position_side": "",
     "entry_price": 0,
-    "current_price": 3500,
+    "current_price": 0,
     "position_size": 0,
     "position_usdt": 0,
     "pnl": 0,
     "pnl_pct": 0,
     "total_trades": 0,
     "win_trades": 0,
-    "symbol": "ETH-USDT-SWAP",
+    "symbol": DEFAULT_SYMBOL,
     "current_symbol": DEFAULT_SYMBOL,  # 当前选择的币种
     "enabled_symbols": [DEFAULT_SYMBOL],  # 允许自动交易的币种列表
     "timeframe": "1h",
@@ -58,7 +58,7 @@ def normalize_symbol(symbol):
     return symbol
 
 
-def generate_mock_candles(count=100, symbol="ETH-USDT-SWAP"):
+def generate_mock_candles(count=100, symbol=DEFAULT_SYMBOL):
     """生成模拟K线"""
     import random
     candles = []
@@ -512,7 +512,7 @@ def close_position():
 def set_stop_take_profit():
     """设置止盈止损"""
     data = request.json or {}
-    symbol = data.get("symbol", "ETH-USDT-SWAP")
+    symbol = normalize_symbol(data.get("symbol", DEFAULT_SYMBOL))
     stop_loss = data.get("stop_loss")
     take_profit = data.get("take_profit")
     pos_side = data.get("pos_side")
@@ -690,18 +690,20 @@ def auto_status():
     if MOCK_MODE or at is None:
         from ema_strategy import EMAStrategy
         strategy = EMAStrategy()
+        cur_sym = trading_status.get("current_symbol", DEFAULT_SYMBOL)
+        base_p = 3500 if "ETH" in cur_sym else 65000
         analysis = {}
         for tf in strategy.TIMEFRAMES:
             analysis[tf] = {
                 "tf": tf,
-                "ema180": 3500,
-                "ema250": 3520,
-                "current_price": 3510,
+                "ema180": base_p + 20,
+                "ema250": base_p,
+                "current_price": base_p + 10,
                 "in_zone": True,
                 "trend": "short",
-                "ema_high": 3520,
-                "ema_low": 3500,
-                "center_price": 3510,
+                "ema_high": base_p + 20,
+                "ema_low": base_p,
+                "center_price": base_p + 10,
                 "zone_width": 20,
                 "zone_width_pct": 0.57,
                 "is_ranging": False,
@@ -854,7 +856,7 @@ def health():
         "status": "ok",
         "timestamp": datetime.now().isoformat(),
         "mock_mode": MOCK_MODE,
-        "symbol": trading_status["symbol"]
+        "symbol": trading_status.get("current_symbol", DEFAULT_SYMBOL)
     })
 
 

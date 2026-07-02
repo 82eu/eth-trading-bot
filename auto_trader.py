@@ -8,7 +8,7 @@ import time
 from datetime import datetime
 from ema_strategy import EMAStrategy
 from kline_service import get_kline_service
-from config import LEVERAGE, SYMBOL, SUPPORTED_SYMBOLS
+from config import LEVERAGE, SYMBOL, SUPPORTED_SYMBOLS, DEFAULT_SYMBOL
 from feishu_bot import get_feishu_bot
 
 
@@ -38,7 +38,7 @@ class AutoTrader:
             "sl_points": 30,
             "leverage": LEVERAGE,
             "feishu_enabled": True,
-            "enabled_symbols": ["ETH-USDT-SWAP"],
+            "enabled_symbols": [DEFAULT_SYMBOL],
         }
 
         self.analysis_cache = {}
@@ -81,7 +81,7 @@ class AutoTrader:
         if not self.feishu.enabled:
             return
         try:
-            symbol = kwargs.get("symbol", "ETH-USDT-SWAP")
+            symbol = kwargs.get("symbol", DEFAULT_SYMBOL)
             symbol_name = symbol.split("-")[0]
             tf = kwargs.get("tf", "")
             
@@ -169,7 +169,7 @@ class AutoTrader:
             self._stop_event.wait(30)
 
     def _check_once(self):
-        enabled_symbols = self.config.get("enabled_symbols", ["ETH-USDT-SWAP"])
+        enabled_symbols = self.config.get("enabled_symbols", [DEFAULT_SYMBOL])
         for symbol in enabled_symbols:
             if symbol not in SUPPORTED_SYMBOLS:
                 continue
@@ -194,7 +194,7 @@ class AutoTrader:
 
     def refresh_analysis(self, symbol=None):
         if symbol is None:
-            symbol = self.config.get("enabled_symbols", ["ETH-USDT-SWAP"])[0]
+            symbol = self.config.get("enabled_symbols", [DEFAULT_SYMBOL])[0]
         analysis_map = {}
         for tf in self.strategy.TIMEFRAMES:
             candles = self._get_candles(symbol, tf)
@@ -335,7 +335,7 @@ class AutoTrader:
 
     def test_open_order(self, timeframe, direction=None, symbol=None):
         if symbol is None:
-            symbol = self.config.get("enabled_symbols", ["ETH-USDT-SWAP"])[0]
+            symbol = self.config.get("enabled_symbols", [DEFAULT_SYMBOL])[0]
         candles = self._get_candles(symbol, timeframe)
         if not candles:
             msg = f"获取{symbol} {timeframe}K线失败"
@@ -346,6 +346,12 @@ class AutoTrader:
         analysis = self.strategy.analyze_tf(candles, timeframe)
         if not analysis:
             msg = "策略分析失败"
+            logger.error(msg)
+            self._add_log(f"[测试][{symbol.split('-')[0]}][{timeframe}] {msg}", "error")
+            return False, msg
+
+        if not analysis.get("in_zone", False):
+            msg = f"价格不在EMA区间内 (当前价: {analysis['current_price']:.2f}, EMA区间: [{analysis['ema_low']:.2f}, {analysis['ema_high']:.2f}])"
             logger.error(msg)
             self._add_log(f"[测试][{symbol.split('-')[0]}][{timeframe}] {msg}", "error")
             return False, msg
