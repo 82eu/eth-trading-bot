@@ -235,8 +235,9 @@ class OKXClient:
         size = self.usdt_to_size(symbol, usdt_amount, current_price, lev)
 
         if size is None or size <= 0:
-            logger.error(f"计算张数失败: {size}")
-            self.last_error = f"计算张数失败: {size}"
+            if not self.last_error:
+                self.last_error = f"计算张数失败: {size}"
+            logger.error(self.last_error)
             return None
 
         balance = self.get_balance()
