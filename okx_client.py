@@ -69,7 +69,11 @@ class OKXClient:
 
     @staticmethod
     def _normalize_symbol(symbol):
-        return symbol if "-SWAP" in symbol else f"{symbol}-SWAP"
+        if "-SWAP" in symbol:
+            return symbol
+        if "-USDT" in symbol:
+            return symbol.replace("-USDT", "-USDT-SWAP")
+        return f"{symbol}-SWAP"
 
     def get_balance(self):
         """获取合约账户余额/权益"""
@@ -259,9 +263,11 @@ class OKXClient:
             lev = leverage if leverage else LEVERAGE
 
             try:
-                self.set_leverage(symbol, lev, pos_side)
+                leverage_ok = self.set_leverage(symbol, lev, pos_side)
+                if not leverage_ok:
+                    logger.warning(f"杠杆设置失败，可能导致下单失败: {symbol} {lev}x")
             except Exception as e:
-                logger.debug(f"设置杠杆跳过: {e}")
+                logger.warning(f"设置杠杆异常: {e}")
 
             body_dict = {
                 "instId": inst_id,
@@ -298,8 +304,8 @@ class OKXClient:
                 logger.info(f"下单成功: {side} {size} {symbol}, 订单ID: {order_id}, TP={take_profit}, SL={stop_loss}")
                 return order_id
             else:
-                logger.error(f"下单失败: {result}")
-                self.last_error = f"下单失败: {result.get('msg', '未知错误')} (code: {result.get('code', '?')})"
+                logger.error(f"下单失败[{symbol}]: {result}")
+                self.last_error = f"下单失败[{symbol}]: {result.get('msg', '未知错误')} (code: {result.get('code', '?')})"
                 return None
         except Exception as e:
             logger.error(f"下单异常: {e}")

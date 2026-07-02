@@ -394,6 +394,7 @@ class AutoTrader:
                 "order_id": order_id,
             }
         else:
+            err = getattr(self.client, 'last_error', '')
             balance = self.client.get_balance()
             avail_eq = 0
             if balance:
@@ -405,8 +406,10 @@ class AutoTrader:
             margin_needed = open_amount / leverage
             if avail_eq > 0 and avail_eq < margin_needed:
                 msg = f"余额不足: 可用 {avail_eq:.2f} USDT, 需要保证金 {margin_needed:.2f} USDT ({open_amount:.2f}U合约价值 × {leverage}x杠杆)"
+            elif err:
+                msg = f"开单失败: {err}"
             else:
-                msg = "开单失败（交易所返回错误，请看日志）"
+                msg = "开单失败（交易所返回错误，请查看日志）"
             self._add_log(f"[测试][{symbol_name}][{timeframe}] {msg}", "error")
             return False, msg
 
