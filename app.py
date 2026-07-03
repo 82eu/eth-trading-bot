@@ -718,6 +718,7 @@ def auto_status():
                     "num_entries": {"ETH-USDT-SWAP": 2, "BTC-USDT-SWAP": 2},
                     "tp_points": {"ETH-USDT-SWAP": 50, "BTC-USDT-SWAP": 500},
                     "sl_points": {"ETH-USDT-SWAP": 30, "BTC-USDT-SWAP": 300},
+                    "buffer_width": {"ETH-USDT-SWAP": 10, "BTC-USDT-SWAP": 100},
                     "leverage": trading_status["leverage"],
                 },
                 "positions": {},
