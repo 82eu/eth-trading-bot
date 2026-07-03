@@ -32,10 +32,11 @@ class AutoTrader:
 
         self.config = {
             "enabled_tfs": ["5m", "15m"],
-            "total_amount_usdt": 100,
-            "num_entries": 2,
-            "tp_points": 50,
-            "sl_points": 30,
+            "total_amount_usdt": {"ETH-USDT-SWAP": 100, "BTC-USDT-SWAP": 100},
+            "num_entries": {"ETH-USDT-SWAP": 2, "BTC-USDT-SWAP": 2},
+            "tp_points": {"ETH-USDT-SWAP": 50, "BTC-USDT-SWAP": 500},
+            "sl_points": {"ETH-USDT-SWAP": 30, "BTC-USDT-SWAP": 300},
+            "buffer_width": {"ETH-USDT-SWAP": 10, "BTC-USDT-SWAP": 100},
             "leverage": LEVERAGE,
             "feishu_enabled": True,
             "enabled_symbols": [DEFAULT_SYMBOL],
@@ -147,18 +148,6 @@ class AutoTrader:
             "buffer_state": self._buffer_state,
         }
 
-    def refresh_analysis(self):
-        analysis_map = {}
-        for tf in self.strategy.TIMEFRAMES:
-            candles = self._get_candles(tf)
-            if candles:
-                analysis = self.strategy.analyze_tf(candles, tf)
-                if analysis:
-                    analysis_map[tf] = analysis
-        self.analysis_cache = analysis_map
-        self.last_check_time = datetime.now()
-        return analysis_map
-
     def _run(self):
         while not self._stop_event.is_set():
             try:
@@ -191,6 +180,28 @@ class AutoTrader:
         except Exception as e:
             logger.error(f"获取{symbol} {timeframe}K线失败: {e}")
             return None
+
+    def _get_symbol_config(self, key, symbol, default_val):
+        """按币种获取配置值，支持旧版单值和新版dict格式"""
+        val = self.config.get(key, default_val)
+        if isinstance(val, dict):
+            return val.get(symbol, val.get(DEFAULT_SYMBOL, default_val))
+        return val
+
+    def _get_tp_points(self, symbol):
+        return self._get_symbol_config("tp_points", symbol, 50)
+
+    def _get_sl_points(self, symbol):
+        return self._get_symbol_config("sl_points", symbol, 30)
+
+    def _get_buffer_width(self, symbol):
+        return self._get_symbol_config("buffer_width", symbol, 10)
+
+    def _get_total_amount(self, symbol):
+        return self._get_symbol_config("total_amount_usdt", symbol, 100)
+
+    def _get_num_entries(self, symbol):
+        return int(self._get_symbol_config("num_entries", symbol, 2))
 
     def refresh_analysis(self, symbol=None):
         if symbol is None:
@@ -280,8 +291,8 @@ class AutoTrader:
         if position_key in self.opened_positions:
             return
 
-        num_entries = self.config.get("num_entries", 2)
-        total_amount = self.config.get("total_amount_usdt", 100)
+        num_entries = self._get_num_entries(symbol)
+        total_amount = self._get_total_amount(symbol)
         open_amount = total_amount / num_entries
 
         entries = self.strategy.calc_entry_levels(analysis, trend, num_entries)
@@ -299,8 +310,8 @@ class AutoTrader:
         if entry_index < 0:
             return
 
-        sl_price = self._calc_sl_with_big_tf_check(analysis_map, tf, trend, self.config["sl_points"])
-        tp_price = self.strategy.calc_take_profit(analysis, trend, self.config["tp_points"])
+        sl_price = self._calc_sl_with_big_tf_check(analysis_map, tf, trend, self._get_sl_points(symbol))
+        tp_price = self.strategy.calc_take_profit(analysis, trend, self._get_tp_points(symbol))
 
         symbol_name = symbol.split("-")[0]
         self._add_log(f"[{symbol_name}][{tf}] {trend}信号, 入场{entry_index+1}/{num_entries}, 价格{current_price:.2f}", "signal")
@@ -323,11 +334,12 @@ class AutoTrader:
                 "time": datetime.now().isoformat(),
                 "order_id": order_id,
             }
+            buf_w = self._get_buffer_width(symbol)
             self._buffer_state[buffer_key] = {
-                "buffer_low": round(ema_low - self.buffer_width, 2),
-                "buffer_high": round(ema_high + self.buffer_width, 2),
+                "buffer_low": round(ema_low - buf_w, 2),
+                "buffer_high": round(ema_high + buf_w, 2),
             }
-            self._add_log(f"[{symbol_name}][{tf}] 开{trend}成功 {open_amount}U @ {current_price:.2f}, 缓冲带[{round(ema_low - self.buffer_width, 2)}, {round(ema_high + self.buffer_width, 2)}]", "success")
+            self._add_log(f"[{symbol_name}][{tf}] 开{trend}成功 {open_amount}U @ {current_price:.2f}, 缓冲带[{round(ema_low - buf_w, 2)}, {round(ema_high + buf_w, 2)}]", "success")
             self._notify_feishu("trade_success", symbol=symbol, tf=tf, direction=trend, amount=open_amount, price=current_price, tp=tp_price, sl=sl_price, leverage=self.config["leverage"])
         else:
             self._add_log(f"[{symbol_name}][{tf}] 开单失败", "error")
@@ -365,12 +377,12 @@ class AutoTrader:
                 self._add_log(f"[测试][{symbol.split('-')[0]}][{timeframe}] {msg}", "error")
                 return False, msg
 
-        total_amount = self.config.get("total_amount_usdt", 100)
+        total_amount = self._get_total_amount(symbol)
         open_amount = total_amount
 
         current_price = analysis["current_price"]
-        sl_price = self._calc_sl_with_big_tf_check(analysis_map, timeframe, direction, self.config["sl_points"], current_price)
-        tp_price = self.strategy.calc_take_profit(analysis, direction, self.config["tp_points"])
+        sl_price = self._calc_sl_with_big_tf_check(analysis_map, timeframe, direction, self._get_sl_points(symbol), current_price)
+        tp_price = self.strategy.calc_take_profit(analysis, direction, self._get_tp_points(symbol))
         leverage = self.config.get("leverage", 10)
         symbol_name = symbol.split("-")[0]
         logger.info(f"[测试][{symbol_name}][{timeframe}] 开{direction}, 金额{open_amount}U, 杠杆{leverage}x, 价格{current_price:.2f}, 止损{sl_price:.2f}, 止盈{tp_price:.2f}")

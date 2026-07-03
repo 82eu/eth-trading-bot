@@ -714,10 +714,10 @@ def auto_status():
                 "running": False,
                 "config": {
                     "enabled_tfs": ["5m", "15m"],
-                    "total_amount_usdt": 100,
-                    "num_entries": 2,
-                    "tp_points": 50,
-                    "sl_points": 30,
+                    "total_amount_usdt": {"ETH-USDT-SWAP": 100, "BTC-USDT-SWAP": 100},
+                    "num_entries": {"ETH-USDT-SWAP": 2, "BTC-USDT-SWAP": 2},
+                    "tp_points": {"ETH-USDT-SWAP": 50, "BTC-USDT-SWAP": 500},
+                    "sl_points": {"ETH-USDT-SWAP": 30, "BTC-USDT-SWAP": 300},
                     "leverage": trading_status["leverage"],
                 },
                 "positions": {},
@@ -801,13 +801,35 @@ def auto_config():
     if "enabled_tfs" in data:
         config["enabled_tfs"] = data["enabled_tfs"]
     if "total_amount_usdt" in data:
-        config["total_amount_usdt"] = float(data["total_amount_usdt"])
+        val = data["total_amount_usdt"]
+        if isinstance(val, dict):
+            config["total_amount_usdt"] = {normalize_symbol(k): float(v) for k, v in val.items()}
+        else:
+            config["total_amount_usdt"] = float(val)
     if "num_entries" in data:
-        config["num_entries"] = int(data["num_entries"])
+        val = data["num_entries"]
+        if isinstance(val, dict):
+            config["num_entries"] = {normalize_symbol(k): int(v) for k, v in val.items()}
+        else:
+            config["num_entries"] = int(val)
     if "tp_points" in data:
-        config["tp_points"] = float(data["tp_points"])
+        val = data["tp_points"]
+        if isinstance(val, dict):
+            config["tp_points"] = {normalize_symbol(k): float(v) for k, v in val.items()}
+        else:
+            config["tp_points"] = float(val)
     if "sl_points" in data:
-        config["sl_points"] = float(data["sl_points"])
+        val = data["sl_points"]
+        if isinstance(val, dict):
+            config["sl_points"] = {normalize_symbol(k): float(v) for k, v in val.items()}
+        else:
+            config["sl_points"] = float(val)
+    if "buffer_width" in data:
+        val = data["buffer_width"]
+        if isinstance(val, dict):
+            config["buffer_width"] = {normalize_symbol(k): float(v) for k, v in val.items()}
+        else:
+            config["buffer_width"] = float(val)
     if "leverage" in data:
         config["leverage"] = int(data["leverage"])
     if "feishu_enabled" in data:
