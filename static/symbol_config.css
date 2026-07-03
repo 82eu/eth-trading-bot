@@ -206,3 +206,35 @@
     background: #627eea;
     color: white;
 }
+
+/* 周期复选框组 */
+.tf-checks-mini {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    flex: 1;
+}
+
+.tf-check-mini {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 11px;
+    color: #a0aec0;
+    cursor: pointer;
+    padding: 2px 6px;
+    background: #2d3748;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.tf-check-mini:hover {
+    background: #4a5568;
+}
+
+.tf-check-mini input {
+    margin: 0;
+    accent-color: #627eea;
+    width: 12px;
+    height: 12px;
+}

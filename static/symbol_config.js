@@ -1,6 +1,9 @@
 // 默认币种列表（首次加载时使用，之后从后端配置动态生成）
 const DEFAULT_SYMBOLS = ["ETH-USDT-SWAP", "BTC-USDT-SWAP"];
 
+// 可选周期列表
+const ALL_TIMEFRAMES = ["5m", "15m", "30m", "1h", "4h"];
+
 // 各币种的默认参数（新添加币种时使用，用户可自行修改）
 const SYMBOL_DEFAULTS = {
     "ETH-USDT-SWAP": {
@@ -10,6 +13,7 @@ const SYMBOL_DEFAULTS = {
         tp_points: 50,
         sl_points: 30,
         buffer_width: 10,
+        enabled_tfs: ["5m", "15m"],
         step_amount: 1,
         step_tp: 1,
         step_sl: 1,
@@ -22,6 +26,7 @@ const SYMBOL_DEFAULTS = {
         tp_points: 500,
         sl_points: 300,
         buffer_width: 100,
+        enabled_tfs: ["5m", "15m"],
         step_amount: 1,
         step_tp: 10,
         step_sl: 10,
@@ -36,6 +41,7 @@ const NEW_SYMBOL_DEFAULTS = {
     tp_points: 100,
     sl_points: 50,
     buffer_width: 20,
+    enabled_tfs: ["5m", "15m"],
     step_amount: 1,
     step_tp: 1,
     step_sl: 1,
@@ -84,6 +90,12 @@ function createSymbolConfigPanel(symbol) {
     panel.className = 'symbol-config-card';
     panel.dataset.symbol = symbol;
     
+    // 生成周期复选框
+    const tfCheckboxes = ALL_TIMEFRAMES.map(tf => {
+        const checked = defaults.enabled_tfs.includes(tf) ? 'checked' : '';
+        return `<label class="tf-check-mini"><input type="checkbox" class="tf-cb-mini" value="${tf}" ${checked}> ${tf}</label>`;
+    }).join('');
+
     panel.innerHTML = `
         <div class="symbol-config-header">
             <span class="symbol-name">${shortName}</span>
@@ -97,8 +109,12 @@ function createSymbolConfigPanel(symbol) {
         </div>
         <div class="symbol-config-body">
             <div class="config-row">
+                <label>启用周期</label>
+                <div class="tf-checks-mini">${tfCheckboxes}</div>
+            </div>
+            <div class="config-row">
                 <label>总金额</label>
-                <input type="number" class="cfg-input" data-key="total_amount_usdt" 
+                <input type="number" class="cfg-input" data-key="total_amount_usdt"
                        value="${defaults.total_amount_usdt}" min="5" step="${defaults.step_amount}">
                 <span class="unit">U</span>
             </div>
@@ -112,19 +128,19 @@ function createSymbolConfigPanel(symbol) {
             </div>
             <div class="config-row">
                 <label>止盈点数</label>
-                <input type="number" class="cfg-input" data-key="tp_points" 
+                <input type="number" class="cfg-input" data-key="tp_points"
                        value="${defaults.tp_points}" step="${defaults.step_tp}">
                 <span class="unit">点</span>
             </div>
             <div class="config-row">
                 <label>止损点数</label>
-                <input type="number" class="cfg-input" data-key="sl_points" 
+                <input type="number" class="cfg-input" data-key="sl_points"
                        value="${defaults.sl_points}" step="${defaults.step_sl}">
                 <span class="unit">点</span>
             </div>
             <div class="config-row">
                 <label>缓冲带</label>
-                <input type="number" class="cfg-input" data-key="buffer_width" 
+                <input type="number" class="cfg-input" data-key="buffer_width"
                        value="${defaults.buffer_width}" step="${defaults.step_buf}">
                 <span class="unit">点</span>
             </div>
@@ -165,8 +181,9 @@ function collectSymbolConfigs() {
         const activeBtn = card.querySelector('.entry-btn-mini.active');
         const cfg = {
             num_entries: activeBtn ? parseInt(activeBtn.dataset.entries) : 2,
+            enabled_tfs: Array.from(card.querySelectorAll('.tf-cb-mini:checked')).map(cb => cb.value),
         };
-        
+
         card.querySelectorAll('.cfg-input').forEach(input => {
             const key = input.dataset.key;
             cfg[key] = parseFloat(input.value) || 0;
@@ -232,12 +249,24 @@ function populateSymbolConfigs(data) {
                 }
             }
         });
+
+        // 填充启用周期
+        if (data.enabled_tfs) {
+            let tfs = typeof data.enabled_tfs === 'object'
+                ? (data.enabled_tfs[symbol] || data.enabled_tfs[shortName])
+                : data.enabled_tfs;
+            if (tfs && Array.isArray(tfs)) {
+                panel.querySelectorAll('.tf-cb-mini').forEach(cb => {
+                    cb.checked = tfs.includes(cb.value);
+                });
+            }
+        }
     });
 }
 
 function getSymbolConfigsForSave() {
     const { configs, enabledSymbols } = collectSymbolConfigs();
-    
+
     const payload = {
         enabled_symbols: enabledSymbols,
         total_amount_usdt: {},
@@ -245,8 +274,9 @@ function getSymbolConfigsForSave() {
         tp_points: {},
         sl_points: {},
         buffer_width: {},
+        enabled_tfs: {},
     };
-    
+
     Object.keys(configs).forEach(symbol => {
         const cfg = configs[symbol];
         payload.total_amount_usdt[symbol] = cfg.total_amount_usdt;
@@ -254,8 +284,9 @@ function getSymbolConfigsForSave() {
         payload.tp_points[symbol] = cfg.tp_points;
         payload.sl_points[symbol] = cfg.sl_points;
         payload.buffer_width[symbol] = cfg.buffer_width;
+        payload.enabled_tfs[symbol] = cfg.enabled_tfs;
     });
-    
+
     return payload;
 }
 
