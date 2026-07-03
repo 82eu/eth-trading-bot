@@ -885,25 +885,6 @@
                             </div>
                         </div>
 
-                        <div class="auto-config-section">
-                            <div class="config-label">启用币种</div>
-                            <div class="symbol-selector-auto">
-                                <label class="symbol-check"><input type="checkbox" value="ETH" class="symbol-cb" checked> ETH</label>
-                                <label class="symbol-check"><input type="checkbox" value="BTC" class="symbol-cb" checked> BTC</label>
-                            </div>
-                        </div>
-
-                        <div class="auto-config-section">
-                            <div class="config-label">启用周期</div>
-                            <div class="tf-selector">
-                                <label class="tf-check"><input type="checkbox" value="5m" class="tf-cb" checked> 5m</label>
-                                <label class="tf-check"><input type="checkbox" value="15m" class="tf-cb" checked> 15m</label>
-                                <label class="tf-check"><input type="checkbox" value="30m" class="tf-cb"> 30m</label>
-                                <label class="tf-check"><input type="checkbox" value="1h" class="tf-cb"> 1h</label>
-                                <label class="tf-check"><input type="checkbox" value="4h" class="tf-cb"> 4h</label>
-                            </div>
-                        </div>
-
                         <div class="symbol-configs-section">
                             <div class="symbol-configs-title">
                                 <span>💰 币种配置</span>
@@ -917,33 +898,6 @@
                         </div>
 
                         <button class="btn-save-config" onclick="saveAutoConfig()">保存配置</button>
-
-                        <div class="auto-test-section">
-                            <div class="config-label">策略测试</div>
-                            <div class="test-tf-selector">
-                                <label>测试币种:</label>
-                                <select id="testSymbol" class="test-select">
-                                    <option value="ETH">ETH</option>
-                                    <option value="BTC">BTC</option>
-                                </select>
-                            </div>
-                            <div class="test-tf-selector">
-                                <label>测试周期:</label>
-                                <select id="testTf" class="test-select">
-                                    <option value="5m">5分钟</option>
-                                    <option value="15m">15分钟</option>
-                                    <option value="30m">30分钟</option>
-                                    <option value="1h">1小时</option>
-                                    <option value="4h">4小时</option>
-                                </select>
-                            </div>
-                            <div class="test-direction-row">
-                                <button class="test-dir-btn test-long" onclick="testEMAStrategy('long')">测试做多</button>
-                                <button class="test-dir-btn test-short" onclick="testEMAStrategy('short')">测试做空</button>
-                                <button class="test-dir-btn test-auto" onclick="testEMAStrategy(null)">按趋势</button>
-                            </div>
-                            <div class="test-hint">点击即用当前配置和EMA策略逻辑开一单测试</div>
-                        </div>
 
                         <div class="notify-switch-section">
                             <div class="config-label">消息推送</div>
@@ -972,34 +926,9 @@
                                     <span class="config-key">启用币种</span>
                                     <span class="config-val" id="cfgSymbols">-</span>
                                 </div>
-                                <div class="config-item">
-                                    <span class="config-key">启用周期</span>
-                                    <span class="config-val" id="cfgTfs">-</span>
-                                </div>
                             </div>
                             <div id="cfgSymbolDetails" class="config-grid" style="margin-top: 8px;"></div>
                         </div>
-                    </div>
-                </div>
-
-                <div class="panel-card">
-                    <div class="panel-title">🧪 止盈止损测试</div>
-                    <div style="padding: 10px;">
-                        <div class="config-row" style="margin-bottom: 10px;">
-                            <label style="width: 80px;">止损价</label>
-                            <input type="number" id="testSlPrice" placeholder="止损价" style="flex:1; padding:5px;">
-                        </div>
-                        <div class="config-row" style="margin-bottom: 10px;">
-                            <label style="width: 80px;">止盈价</label>
-                            <input type="number" id="testTpPrice" placeholder="止盈价" style="flex:1; padding:5px;">
-                        </div>
-                        <div style="display: flex; gap: 5px; flex-wrap: wrap;">
-                            <button class="btn" style="font-size:12px;" onclick="testTpsl('get_positions')">查持仓</button>
-                            <button class="btn" style="font-size:12px;" onclick="testTpsl('get_orders')">查挂单</button>
-                            <button class="btn btn-success" style="font-size:12px;" onclick="testTpsl('open')">开单</button>
-                            <button class="btn" style="font-size:12px;" onclick="testTpsl('algo_tpsl')">条件止盈止损</button>
-                        </div>
-                        <div id="testResult" style="margin-top:10px; font-size:12px; max-height:200px; overflow:auto; background:#f5f5f5; padding:8px; border-radius:4px;"></div>
                     </div>
                 </div>
 
@@ -1043,7 +972,6 @@
             currentSymbol = symbolShort;
             document.getElementById('headerSymbol').value = symbolShort;
             document.getElementById('quickSymbol').value = symbolShort;
-            document.getElementById('testSymbol').value = symbolShort;
             document.getElementById('priceLabel').textContent = symbolShort + ' 价格';
             document.getElementById('chartTitle').textContent = symbolShort + '-USDT-SWAP · 1小时';
             document.getElementById('calcSizeUnit').textContent = symbolShort;
@@ -1105,26 +1033,23 @@
             document.getElementById('cfgRunning').style.color = running ? '#48bb78' : '#718096';
             document.getElementById('cfgLeverage').textContent = (config.leverage || leverage) + 'x';
             const symbols = config.enabled_symbols || [];
-            document.getElementById('cfgSymbols').textContent = symbols.length ? symbols.join(' ') : '-';
-            const tfs = config.enabled_tfs || [];
-            const tfMap = {'5m':'5m','15m':'15m','30m':'30m','1h':'1h','4h':'4h'};
-            document.getElementById('cfgTfs').textContent = tfs.length ? tfs.map(t => tfMap[t] || t).join(' ') : '-';
-            
-            // 动态生成各币种配置摘要
+            document.getElementById('cfgSymbols').textContent = symbols.length ? symbols.map(s => s.replace('-USDT-SWAP', '')).join(' ') : '-';
+
+            // 动态生成各币种配置摘要（含周期）
             const detailContainer = document.getElementById('cfgSymbolDetails');
             if (detailContainer) {
                 const allSymbols = new Set();
-                ['total_amount_usdt', 'tp_points', 'sl_points'].forEach(key => {
+                ['total_amount_usdt', 'tp_points', 'sl_points', 'enabled_tfs'].forEach(key => {
                     if (config[key] && typeof config[key] === 'object') {
                         Object.keys(config[key]).forEach(s => allSymbols.add(s));
                     }
                 });
-                
+
                 let html = '';
                 allSymbols.forEach(symbol => {
                     const shortName = symbol.replace('-USDT-SWAP', '');
-                    const amt = (typeof config.total_amount_usdt === 'object') 
-                        ? (config.total_amount_usdt[symbol] || config.total_amount_usdt[shortName] || '-') 
+                    const amt = (typeof config.total_amount_usdt === 'object')
+                        ? (config.total_amount_usdt[symbol] || config.total_amount_usdt[shortName] || '-')
                         : (config.total_amount_usdt || '-');
                     const tp = (typeof config.tp_points === 'object')
                         ? (config.tp_points[symbol] || config.tp_points[shortName] || '-')
@@ -1132,7 +1057,14 @@
                     const sl = (typeof config.sl_points === 'object')
                         ? (config.sl_points[symbol] || config.sl_points[shortName] || '-')
                         : (config.sl_points || '-');
-                    html += `<div class="config-item"><span class="config-key">${shortName}</span><span class="config-val">${amt}U ${tp}/${sl}点</span></div>`;
+                    let tfs = '-';
+                    if (config.enabled_tfs) {
+                        const tfsVal = typeof config.enabled_tfs === 'object'
+                            ? (config.enabled_tfs[symbol] || config.enabled_tfs[shortName])
+                            : config.enabled_tfs;
+                        if (Array.isArray(tfsVal)) tfs = tfsVal.join('/');
+                    }
+                    html += `<div class="config-item"><span class="config-key">${shortName}</span><span class="config-val">${amt}U ${tp}/${sl}点 ${tfs}</span></div>`;
                 });
                 detailContainer.innerHTML = html;
             }
@@ -1151,40 +1083,6 @@
             }
             document.getElementById('takeProfit').value = tpPrice.toFixed(2);
             document.getElementById('stopLoss').value = slPrice.toFixed(2);
-        }
-
-        async function testTpsl(action) {
-            const slPrice = document.getElementById('testSlPrice').value;
-            const tpPrice = document.getElementById('testTpPrice').value;
-            const resultDiv = document.getElementById('testResult');
-            resultDiv.innerHTML = '<div style="color:#666;">执行中...</div>';
-
-            try {
-                const body = {
-                    action: action,
-                    symbol: currentSymbol + '-USDT-SWAP',
-                    pos_side: currentDirection || 'long'
-                };
-                if (slPrice) body.sl_price = parseFloat(slPrice);
-                if (tpPrice) body.tp_price = parseFloat(tpPrice);
-
-                const res = await fetch(API_BASE + '/api/test_tpsl', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                });
-                const data = await res.json();
-
-                if (data.code === 0) {
-                    resultDiv.innerHTML = `<div style="color:green;">✅ ${data.msg}</div>
-                        <pre style="margin:10px 0; font-size:11px; white-space:pre-wrap;">${JSON.stringify(data.data, null, 2)}</pre>`;
-                } else {
-                    resultDiv.innerHTML = `<div style="color:red;">❌ ${data.msg}</div>
-                        <pre style="margin:10px 0; font-size:11px; white-space:pre-wrap; color:#c00;">${JSON.stringify(data.data, null, 2)}</pre>`;
-                }
-            } catch (e) {
-                resultDiv.innerHTML = `<div style="color:red;">❌ 错误: ${e.message}</div>`;
-            }
         }
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -1533,7 +1431,7 @@
         let autoTradingRunning = false;
         let autoConfig = {
             enabled_symbols: ["ETH", "BTC"],
-            enabled_tfs: ["5m", "15m"],
+            enabled_tfs: {"ETH-USDT-SWAP": ["5m", "15m"], "BTC-USDT-SWAP": ["5m", "15m"]},
             total_amount_usdt: {"ETH-USDT-SWAP": 100, "BTC-USDT-SWAP": 100},
             num_entries: {"ETH-USDT-SWAP": 2, "BTC-USDT-SWAP": 2},
             tp_points: {"ETH-USDT-SWAP": 50, "BTC-USDT-SWAP": 500},
@@ -1555,49 +1453,7 @@
             return symbols.map(s => symbolToShort(s));
         }
 
-        async function testEMAStrategy(direction) {
-            const tf = document.getElementById('testTf').value;
-            const symbolShort = document.getElementById('testSymbol').value;
-            const symbolFull = symbolToFull(symbolShort);
-            const dirText = direction === null ? '按趋势' : (direction === 'long' ? '做多' : '做空');
-            showToast(`EMA策略测试中... (${symbolShort} ${tf} ${dirText})`, 'info');
-
-            try {
-                const res = await fetch(API_BASE + '/api/auto/test', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        symbol: symbolFull,
-                        tf: tf,
-                        direction: direction
-                    })
-                });
-                const data = await res.json();
-                if (data.code === 0) {
-                    const d = data.data || {};
-                    const slAdj = d.sl_adjusted ? ' (止损缩1/3)' : '';
-                    showToast(`测试成功: ${d.direction} $${d.current_price?.toFixed(2)}${slAdj}`, 'success');
-                    setTimeout(() => {
-                        fetchStatus();
-                        fetchBalance();
-                        fetchAutoStatus();
-                        fetchTrades();
-                    }, 1000);
-                } else {
-                    showToast('测试失败: ' + (data.msg || '未知错误'), 'error');
-                }
-            } catch (e) {
-                showToast('测试失败: ' + e.message, 'error');
-            }
-        }
-
         document.getElementById('orderAmount').addEventListener('input', updateCalc);
-
-        document.querySelectorAll('.tf-cb').forEach(cb => {
-            cb.addEventListener('change', () => {
-                autoConfig.enabled_tfs = Array.from(document.querySelectorAll('.tf-cb:checked')).map(c => c.value);
-            });
-        });
 
         function setAutoEditing(val) {
             autoConfigEditing = val;
@@ -1611,10 +1467,11 @@
                 tp_points: {"ETH-USDT-SWAP": 50, "BTC-USDT-SWAP": 500},
                 sl_points: {"ETH-USDT-SWAP": 30, "BTC-USDT-SWAP": 300},
                 buffer_width: {"ETH-USDT-SWAP": 10, "BTC-USDT-SWAP": 100},
+                enabled_tfs: {"ETH-USDT-SWAP": ["5m", "15m"], "BTC-USDT-SWAP": ["5m", "15m"]},
             };
-            
+
             autoConfig.enabled_symbols = symbolPayload.enabled_symbols;
-            autoConfig.enabled_tfs = Array.from(document.querySelectorAll('.tf-cb:checked')).map(c => c.value);
+            autoConfig.enabled_tfs = symbolPayload.enabled_tfs;
             autoConfig.total_amount_usdt = symbolPayload.total_amount_usdt;
             autoConfig.num_entries = symbolPayload.num_entries;
             autoConfig.tp_points = symbolPayload.tp_points;
@@ -1751,12 +1608,6 @@
                         if (!autoConfigEditing) {
                             if (window.populateSymbolConfigs) {
                                 window.populateSymbolConfigs(s.config);
-                            }
-
-                            if (s.config.enabled_tfs) {
-                                document.querySelectorAll('.tf-cb').forEach(cb => {
-                                    cb.checked = s.config.enabled_tfs.includes(cb.value);
-                                });
                             }
 
                             const feishuSwitch = document.getElementById('feishuSwitch');
