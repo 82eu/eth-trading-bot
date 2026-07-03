@@ -9,7 +9,7 @@ from loguru import logger
 import os
 import sys
 from datetime import datetime
-from config import SUPPORTED_SYMBOLS, DEFAULT_SYMBOL
+from config import SUPPORTED_SYMBOLS, DEFAULT_SYMBOL, is_valid_swap_symbol
 
 load_dotenv()
 
@@ -50,11 +50,14 @@ def normalize_symbol(symbol):
     if not symbol:
         return DEFAULT_SYMBOL
     symbol = symbol.upper().strip()
-    if symbol in SUPPORTED_SYMBOLS:
+    # 已经是完整格式
+    if is_valid_swap_symbol(symbol):
         return symbol
-    for supported in SUPPORTED_SYMBOLS:
-        if supported.startswith(symbol + '-') or supported.startswith(symbol + '_'):
-            return supported
+    # 尝试补全为 XXX-USDT-SWAP
+    if symbol.replace("-", "").isalpha():
+        full = symbol.replace("-", "") + "-USDT-SWAP"
+        if is_valid_swap_symbol(full):
+            return full
     return symbol
 
 
@@ -125,8 +128,8 @@ def set_symbol():
         return jsonify({"code": 1, "msg": "缺少symbol参数"}), 400
     
     symbol = normalize_symbol(symbol)
-    if symbol not in SUPPORTED_SYMBOLS:
-        return jsonify({"code": 1, "msg": f"不支持的币种: {symbol}，支持的币种: {SUPPORTED_SYMBOLS}"}), 400
+    if not is_valid_swap_symbol(symbol):
+        return jsonify({"code": 1, "msg": f"不支持的币种格式: {symbol}，需为 XXX-USDT-SWAP"}), 400
 
     global trading_status
     trading_status["current_symbol"] = symbol
@@ -186,8 +189,8 @@ def get_candles():
     symbol = normalize_symbol(symbol)
     
     # 校验symbol
-    if symbol not in SUPPORTED_SYMBOLS:
-        return jsonify({"code": 1, "msg": f"不支持的币种: {symbol}"}), 400
+    if not is_valid_swap_symbol(symbol):
+        return jsonify({"code": 1, "msg": f"不支持的币种格式: {symbol}，需为 XXX-USDT-SWAP"}), 400
     
     timeframe = request.args.get("timeframe", "1h")
     limit = int(request.args.get("limit", 100))
@@ -336,8 +339,8 @@ def place_order():
     symbol = normalize_symbol(symbol)
     
     # 校验symbol
-    if symbol not in SUPPORTED_SYMBOLS:
-        return jsonify({"code": 1, "msg": f"不支持的币种: {symbol}，支持的币种: {SUPPORTED_SYMBOLS}"}), 400
+    if not is_valid_swap_symbol(symbol):
+        return jsonify({"code": 1, "msg": f"不支持的币种格式: {symbol}，需为 XXX-USDT-SWAP"}), 400
     
     side = data.get("side", "buy")
     amount_usdt = float(data.get("amount_usdt", 100))
@@ -430,8 +433,8 @@ def close_position():
     symbol = normalize_symbol(symbol)
     
     # 校验symbol
-    if symbol not in SUPPORTED_SYMBOLS:
-        return jsonify({"code": 1, "msg": f"不支持的币种: {symbol}，支持的币种: {SUPPORTED_SYMBOLS}"}), 400
+    if not is_valid_swap_symbol(symbol):
+        return jsonify({"code": 1, "msg": f"不支持的币种格式: {symbol}，需为 XXX-USDT-SWAP"}), 400
     
     amount_usdt = data.get("amount_usdt")
 
@@ -774,8 +777,8 @@ def auto_test():
     symbol = normalize_symbol(symbol)
     
     # 校验symbol
-    if symbol not in SUPPORTED_SYMBOLS:
-        return jsonify({"code": 1, "msg": f"不支持的币种: {symbol}，支持的币种: {SUPPORTED_SYMBOLS}"}), 400
+    if not is_valid_swap_symbol(symbol):
+        return jsonify({"code": 1, "msg": f"不支持的币种格式: {symbol}，需为 XXX-USDT-SWAP"}), 400
     
     tf = data.get("tf", "5m")
     direction = data.get("direction")
@@ -845,10 +848,10 @@ def auto_config():
         # 规范化所有symbol
         enabled_symbols = [normalize_symbol(s) for s in enabled_symbols]
         
-        # 校验所有symbol是否支持
-        invalid_symbols = [s for s in enabled_symbols if s not in SUPPORTED_SYMBOLS]
+        # 校验所有symbol格式
+        invalid_symbols = [s for s in enabled_symbols if not is_valid_swap_symbol(s)]
         if invalid_symbols:
-            return jsonify({"code": 1, "msg": f"不支持的币种: {invalid_symbols}，支持的币种: {SUPPORTED_SYMBOLS}"}), 400
+            return jsonify({"code": 1, "msg": f"不支持的币种格式: {invalid_symbols}，需为 XXX-USDT-SWAP"}), 400
         
         config["enabled_symbols"] = enabled_symbols
         trading_status["enabled_symbols"] = enabled_symbols
