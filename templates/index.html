@@ -7,6 +7,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.umd.min.js"></script>
+    <link rel="stylesheet" href="/static/symbol_config.css">
+    <script type="module" src="/static/symbol_config.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -902,71 +904,16 @@
                             </div>
                         </div>
 
-                        <div class="symbol-tabs">
-                            <button class="symbol-tab active" data-tab="ETH" onclick="switchSymbolTab('ETH')">ETH 配置</button>
-                            <button class="symbol-tab" data-tab="BTC" onclick="switchSymbolTab('BTC')">BTC 配置</button>
-                        </div>
-
-                        <div class="symbol-tab-panel active" data-panel="ETH">
-                            <div class="auto-config-row">
-                                <label>总金额</label>
-                                <input type="number" id="autoAmountETH" value="100" min="5" step="1">
-                                <span class="unit">U</span>
-                            </div>
-                            <div class="auto-config-row">
-                                <label>分批份数</label>
-                                <div class="entry-btns" data-symbol="ETH">
-                                    <button class="entry-btn entry-eth active" data-entries="1" data-symbol="ETH">1份</button>
-                                    <button class="entry-btn entry-eth" data-entries="2" data-symbol="ETH">2份</button>
-                                    <button class="entry-btn entry-eth" data-entries="3" data-symbol="ETH">3份</button>
+                        <div class="symbol-configs-section">
+                            <div class="symbol-configs-title">
+                                <span>💰 币种配置</span>
+                                <div class="add-symbol-bar">
+                                    <input type="text" id="newSymbolInput" class="add-symbol-input" 
+                                           placeholder="输入币种如 SOL" maxlength="20">
+                                    <button class="btn-add-symbol" onclick="addNewSymbol(document.getElementById('newSymbolInput'))">+ 添加币种</button>
                                 </div>
                             </div>
-                            <div class="auto-config-row">
-                                <label>止盈点数</label>
-                                <input type="number" id="autoTpETH" value="50" step="1">
-                                <span class="unit">点</span>
-                            </div>
-                            <div class="auto-config-row">
-                                <label>止损点数</label>
-                                <input type="number" id="autoSlETH" value="30" step="1">
-                                <span class="unit">点</span>
-                            </div>
-                            <div class="auto-config-row">
-                                <label>缓冲带</label>
-                                <input type="number" id="autoBufETH" value="10" step="1">
-                                <span class="unit">点</span>
-                            </div>
-                        </div>
-
-                        <div class="symbol-tab-panel" data-panel="BTC">
-                            <div class="auto-config-row">
-                                <label>总金额</label>
-                                <input type="number" id="autoAmountBTC" value="100" min="5" step="1">
-                                <span class="unit">U</span>
-                            </div>
-                            <div class="auto-config-row">
-                                <label>分批份数</label>
-                                <div class="entry-btns" data-symbol="BTC">
-                                    <button class="entry-btn entry-btc active" data-entries="1" data-symbol="BTC">1份</button>
-                                    <button class="entry-btn entry-btc" data-entries="2" data-symbol="BTC">2份</button>
-                                    <button class="entry-btn entry-btc" data-entries="3" data-symbol="BTC">3份</button>
-                                </div>
-                            </div>
-                            <div class="auto-config-row">
-                                <label>止盈点数</label>
-                                <input type="number" id="autoTpBTC" value="500" step="10">
-                                <span class="unit">点</span>
-                            </div>
-                            <div class="auto-config-row">
-                                <label>止损点数</label>
-                                <input type="number" id="autoSlBTC" value="300" step="10">
-                                <span class="unit">点</span>
-                            </div>
-                            <div class="auto-config-row">
-                                <label>缓冲带</label>
-                                <input type="number" id="autoBufBTC" value="100" step="10">
-                                <span class="unit">点</span>
-                            </div>
+                            <div id="symbolConfigsContainer" class="symbol-config-grid"></div>
                         </div>
 
                         <button class="btn-save-config" onclick="saveAutoConfig()">保存配置</button>
@@ -1029,47 +976,8 @@
                                     <span class="config-key">启用周期</span>
                                     <span class="config-val" id="cfgTfs">-</span>
                                 </div>
-                                <div class="config-item cfg-symbol-row" data-cfg="ETH">
-                                    <span class="config-key">总金额</span>
-                                    <span class="config-val" id="cfgAmountETH">-</span>
-                                </div>
-                                <div class="config-item cfg-symbol-row" data-cfg="ETH">
-                                    <span class="config-key">分批份数</span>
-                                    <span class="config-val" id="cfgEntriesETH">-</span>
-                                </div>
-                                <div class="config-item cfg-symbol-row" data-cfg="ETH">
-                                    <span class="config-key">止盈</span>
-                                    <span class="config-val" id="cfgTpETH">-</span>
-                                </div>
-                                <div class="config-item cfg-symbol-row" data-cfg="ETH">
-                                    <span class="config-key">止损</span>
-                                    <span class="config-val" id="cfgSlETH">-</span>
-                                </div>
-                                <div class="config-item cfg-symbol-row" data-cfg="ETH">
-                                    <span class="config-key">缓冲带</span>
-                                    <span class="config-val" id="cfgBufETH">-</span>
-                                </div>
-                                <div class="config-item cfg-symbol-row" data-cfg="BTC" style="display:none">
-                                    <span class="config-key">总金额</span>
-                                    <span class="config-val" id="cfgAmountBTC">-</span>
-                                </div>
-                                <div class="config-item cfg-symbol-row" data-cfg="BTC" style="display:none">
-                                    <span class="config-key">分批份数</span>
-                                    <span class="config-val" id="cfgEntriesBTC">-</span>
-                                </div>
-                                <div class="config-item cfg-symbol-row" data-cfg="BTC" style="display:none">
-                                    <span class="config-key">止盈</span>
-                                    <span class="config-val" id="cfgTpBTC">-</span>
-                                </div>
-                                <div class="config-item cfg-symbol-row" data-cfg="BTC" style="display:none">
-                                    <span class="config-key">止损</span>
-                                    <span class="config-val" id="cfgSlBTC">-</span>
-                                </div>
-                                <div class="config-item cfg-symbol-row" data-cfg="BTC" style="display:none">
-                                    <span class="config-key">缓冲带</span>
-                                    <span class="config-val" id="cfgBufBTC">-</span>
-                                </div>
                             </div>
+                            <div id="cfgSymbolDetails" class="config-grid" style="margin-top: 8px;"></div>
                         </div>
                     </div>
                 </div>
@@ -1201,45 +1109,33 @@
             const tfs = config.enabled_tfs || [];
             const tfMap = {'5m':'5m','15m':'15m','30m':'30m','1h':'1h','4h':'4h'};
             document.getElementById('cfgTfs').textContent = tfs.length ? tfs.map(t => tfMap[t] || t).join(' ') : '-';
-            const amtVal = config.total_amount_usdt;
-            const entVal = config.num_entries;
-            const amtEth = (typeof amtVal === 'object') ? (amtVal['ETH-USDT-SWAP'] || amtVal['ETH'] || 100) : (amtVal || 100);
-            const amtBtc = (typeof amtVal === 'object') ? (amtVal['BTC-USDT-SWAP'] || amtVal['BTC'] || 100) : (amtVal || 100);
-            const entEth = (typeof entVal === 'object') ? (entVal['ETH-USDT-SWAP'] || entVal['ETH'] || 2) : (entVal || 2);
-            const entBtc = (typeof entVal === 'object') ? (entVal['BTC-USDT-SWAP'] || entVal['BTC'] || 2) : (entVal || 2);
-            document.getElementById('cfgAmountETH').textContent = amtEth + ' U';
-            document.getElementById('cfgAmountBTC').textContent = amtBtc + ' U';
-            document.getElementById('cfgEntriesETH').textContent = entEth + '份';
-            document.getElementById('cfgEntriesBTC').textContent = entBtc + '份';
-            const tpVal = config.tp_points;
-            const slVal = config.sl_points;
-            const bufVal = config.buffer_width;
-            const tpEth = (typeof tpVal === 'object') ? (tpVal['ETH-USDT-SWAP'] || tpVal['ETH'] || 50) : (tpVal || 50);
-            const tpBtc = (typeof tpVal === 'object') ? (tpVal['BTC-USDT-SWAP'] || tpVal['BTC'] || 500) : (tpVal || 50);
-            const slEth = (typeof slVal === 'object') ? (slVal['ETH-USDT-SWAP'] || slVal['ETH'] || 30) : (slVal || 30);
-            const slBtc = (typeof slVal === 'object') ? (slVal['BTC-USDT-SWAP'] || slVal['BTC'] || 300) : (slVal || 30);
-            const bufEth = (typeof bufVal === 'object') ? (bufVal['ETH-USDT-SWAP'] || bufVal['ETH'] || 10) : (bufVal || 10);
-            const bufBtc = (typeof bufVal === 'object') ? (bufVal['BTC-USDT-SWAP'] || bufVal['BTC'] || 100) : (bufVal || 100);
-            document.getElementById('cfgTpETH').textContent = tpEth + ' 点';
-            document.getElementById('cfgSlETH').textContent = slEth + ' 点';
-            document.getElementById('cfgTpBTC').textContent = tpBtc + ' 点';
-            document.getElementById('cfgSlBTC').textContent = slBtc + ' 点';
-            document.getElementById('cfgBufETH').textContent = bufEth + ' 点';
-            document.getElementById('cfgBufBTC').textContent = bufBtc + ' 点';
-        }
-
-        let activeSymbolTab = 'ETH';
-        function switchSymbolTab(sym) {
-            activeSymbolTab = sym;
-            document.querySelectorAll('.symbol-tab').forEach(t => {
-                t.classList.toggle('active', t.dataset.tab === sym);
-            });
-            document.querySelectorAll('.symbol-tab-panel').forEach(p => {
-                p.classList.toggle('active', p.dataset.panel === sym);
-            });
-            document.querySelectorAll('.cfg-symbol-row').forEach(r => {
-                r.style.display = (r.dataset.cfg === sym) ? '' : 'none';
-            });
+            
+            // 动态生成各币种配置摘要
+            const detailContainer = document.getElementById('cfgSymbolDetails');
+            if (detailContainer) {
+                const allSymbols = new Set();
+                ['total_amount_usdt', 'tp_points', 'sl_points'].forEach(key => {
+                    if (config[key] && typeof config[key] === 'object') {
+                        Object.keys(config[key]).forEach(s => allSymbols.add(s));
+                    }
+                });
+                
+                let html = '';
+                allSymbols.forEach(symbol => {
+                    const shortName = symbol.replace('-USDT-SWAP', '');
+                    const amt = (typeof config.total_amount_usdt === 'object') 
+                        ? (config.total_amount_usdt[symbol] || config.total_amount_usdt[shortName] || '-') 
+                        : (config.total_amount_usdt || '-');
+                    const tp = (typeof config.tp_points === 'object')
+                        ? (config.tp_points[symbol] || config.tp_points[shortName] || '-')
+                        : (config.tp_points || '-');
+                    const sl = (typeof config.sl_points === 'object')
+                        ? (config.sl_points[symbol] || config.sl_points[shortName] || '-')
+                        : (config.sl_points || '-');
+                    html += `<div class="config-item"><span class="config-key">${shortName}</span><span class="config-val">${amt}U ${tp}/${sl}点</span></div>`;
+                });
+                detailContainer.innerHTML = html;
+            }
         }
 
         function setTpSlPercent(tpPct, slPct) {
@@ -1295,6 +1191,15 @@
             document.querySelectorAll('.lev-btn').forEach(btn => {
                 btn.addEventListener('click', () => setLeverage(parseInt(btn.dataset.lev)));
             });
+            const newSymbolInput = document.getElementById('newSymbolInput');
+            if (newSymbolInput) {
+                newSymbolInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addNewSymbol(newSymbolInput);
+                    }
+                });
+            }
         });
 
         function updateLeverageUI(lev) {
@@ -1688,80 +1593,39 @@
 
         document.getElementById('orderAmount').addEventListener('input', updateCalc);
 
-        document.querySelectorAll('.entry-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const sym = btn.dataset.symbol;
-                document.querySelectorAll('.entry-btn[data-symbol="' + sym + '"]').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                if (!autoConfig.num_entries || typeof autoConfig.num_entries !== 'object') {
-                    autoConfig.num_entries = {"ETH-USDT-SWAP": 2, "BTC-USDT-SWAP": 2};
-                }
-                autoConfig.num_entries[sym + '-USDT-SWAP'] = parseInt(btn.dataset.entries);
-            });
-        });
-
         document.querySelectorAll('.tf-cb').forEach(cb => {
             cb.addEventListener('change', () => {
                 autoConfig.enabled_tfs = Array.from(document.querySelectorAll('.tf-cb:checked')).map(c => c.value);
             });
         });
 
-        document.querySelectorAll('.symbol-cb').forEach(cb => {
-            cb.addEventListener('change', () => {
-                autoConfig.enabled_symbols = Array.from(document.querySelectorAll('.symbol-cb:checked')).map(c => c.value);
-            });
-        });
-
         function setAutoEditing(val) {
             autoConfigEditing = val;
         }
-        ['autoAmountETH', 'autoAmountBTC'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) {
-                el.addEventListener('input', () => setAutoEditing(true));
-                el.addEventListener('blur', () => setTimeout(() => setAutoEditing(false), 500));
-            }
-        });
-        ['autoTpETH', 'autoSlETH', 'autoTpBTC', 'autoSlBTC', 'autoBufETH', 'autoBufBTC'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) {
-                el.addEventListener('input', () => setAutoEditing(true));
-                el.addEventListener('blur', () => setTimeout(() => setAutoEditing(false), 500));
-            }
-        });
 
         async function saveAutoConfig() {
-            const enabledSyms = Array.from(document.querySelectorAll('.symbol-cb:checked')).map(c => c.value);
-            autoConfig.enabled_symbols = enabledSyms;
+            const symbolPayload = window.getSymbolConfigsForSave ? window.getSymbolConfigsForSave() : {
+                enabled_symbols: ["ETH", "BTC"],
+                total_amount_usdt: {"ETH-USDT-SWAP": 100, "BTC-USDT-SWAP": 100},
+                num_entries: {"ETH-USDT-SWAP": 2, "BTC-USDT-SWAP": 2},
+                tp_points: {"ETH-USDT-SWAP": 50, "BTC-USDT-SWAP": 500},
+                sl_points: {"ETH-USDT-SWAP": 30, "BTC-USDT-SWAP": 300},
+                buffer_width: {"ETH-USDT-SWAP": 10, "BTC-USDT-SWAP": 100},
+            };
+            
+            autoConfig.enabled_symbols = symbolPayload.enabled_symbols;
             autoConfig.enabled_tfs = Array.from(document.querySelectorAll('.tf-cb:checked')).map(c => c.value);
-            autoConfig.total_amount_usdt = {
-                "ETH-USDT-SWAP": parseFloat(document.getElementById('autoAmountETH').value) || 100,
-                "BTC-USDT-SWAP": parseFloat(document.getElementById('autoAmountBTC').value) || 100,
-            };
-            autoConfig.tp_points = {
-                "ETH-USDT-SWAP": parseFloat(document.getElementById('autoTpETH').value) || 50,
-                "BTC-USDT-SWAP": parseFloat(document.getElementById('autoTpBTC').value) || 500,
-            };
-            autoConfig.sl_points = {
-                "ETH-USDT-SWAP": parseFloat(document.getElementById('autoSlETH').value) || 30,
-                "BTC-USDT-SWAP": parseFloat(document.getElementById('autoSlBTC').value) || 300,
-            };
-            autoConfig.buffer_width = {
-                "ETH-USDT-SWAP": parseFloat(document.getElementById('autoBufETH').value) || 10,
-                "BTC-USDT-SWAP": parseFloat(document.getElementById('autoBufBTC').value) || 100,
-            };
-            const ethEntryBtn = document.querySelector('.entry-btn.entry-eth.active');
-            const btcEntryBtn = document.querySelector('.entry-btn.entry-btc.active');
-            autoConfig.num_entries = {
-                "ETH-USDT-SWAP": ethEntryBtn ? parseInt(ethEntryBtn.dataset.entries) : 2,
-                "BTC-USDT-SWAP": btcEntryBtn ? parseInt(btcEntryBtn.dataset.entries) : 2,
-            };
+            autoConfig.total_amount_usdt = symbolPayload.total_amount_usdt;
+            autoConfig.num_entries = symbolPayload.num_entries;
+            autoConfig.tp_points = symbolPayload.tp_points;
+            autoConfig.sl_points = symbolPayload.sl_points;
+            autoConfig.buffer_width = symbolPayload.buffer_width;
             autoConfig.leverage = leverage;
             autoConfig.feishu_enabled = document.getElementById('feishuSwitch').checked;
 
             const payload = {
                 ...autoConfig,
-                enabled_symbols: mapSymbolsToFull(enabledSyms)
+                enabled_symbols: symbolPayload.enabled_symbols.map(s => s + '-USDT-SWAP')
             };
 
             try {
@@ -1885,57 +1749,13 @@
                         }
 
                         if (!autoConfigEditing) {
-                            const amountEthInput = document.getElementById('autoAmountETH');
-                            const amountBtcInput = document.getElementById('autoAmountBTC');
-                            const tpEthInput = document.getElementById('autoTpETH');
-                            const slEthInput = document.getElementById('autoSlETH');
-                            const tpBtcInput = document.getElementById('autoTpBTC');
-                            const slBtcInput = document.getElementById('autoSlBTC');
-                            const bufEthInput = document.getElementById('autoBufETH');
-                            const bufBtcInput = document.getElementById('autoBufBTC');
-
-                            const amtVal = s.config.total_amount_usdt;
-                            const entVal = s.config.num_entries;
-                            const amtEth = (typeof amtVal === 'object') ? (amtVal['ETH-USDT-SWAP'] || 100) : (amtVal || 100);
-                            const amtBtc = (typeof amtVal === 'object') ? (amtVal['BTC-USDT-SWAP'] || 100) : (amtVal || 100);
-                            const entEth = (typeof entVal === 'object') ? (entVal['ETH-USDT-SWAP'] || 2) : (entVal || 2);
-                            const entBtc = (typeof entVal === 'object') ? (entVal['BTC-USDT-SWAP'] || 2) : (entVal || 2);
-                            if (document.activeElement !== amountEthInput) amountEthInput.value = amtEth;
-                            if (document.activeElement !== amountBtcInput) amountBtcInput.value = amtBtc;
-
-                            const tpVal = s.config.tp_points;
-                            const slVal = s.config.sl_points;
-                            const bufVal = s.config.buffer_width;
-                            const tpEth = (typeof tpVal === 'object') ? (tpVal['ETH-USDT-SWAP'] || 50) : (tpVal || 50);
-                            const tpBtc = (typeof tpVal === 'object') ? (tpVal['BTC-USDT-SWAP'] || 500) : (tpVal || 50);
-                            const slEth = (typeof slVal === 'object') ? (slVal['ETH-USDT-SWAP'] || 30) : (slVal || 30);
-                            const slBtc = (typeof slVal === 'object') ? (slVal['BTC-USDT-SWAP'] || 300) : (slVal || 30);
-                            const bufEth = (typeof bufVal === 'object') ? (bufVal['ETH-USDT-SWAP'] || 10) : (bufVal || 10);
-                            const bufBtc = (typeof bufVal === 'object') ? (bufVal['BTC-USDT-SWAP'] || 100) : (bufVal || 100);
-                            if (document.activeElement !== tpEthInput) tpEthInput.value = tpEth;
-                            if (document.activeElement !== slEthInput) slEthInput.value = slEth;
-                            if (document.activeElement !== tpBtcInput) tpBtcInput.value = tpBtc;
-                            if (document.activeElement !== slBtcInput) slBtcInput.value = slBtc;
-                            if (document.activeElement !== bufEthInput) bufEthInput.value = bufEth;
-                            if (document.activeElement !== bufBtcInput) bufBtcInput.value = bufBtc;
-
-                            document.querySelectorAll('.entry-btn.entry-eth').forEach(b => {
-                                b.classList.toggle('active', parseInt(b.dataset.entries) === entEth);
-                            });
-                            document.querySelectorAll('.entry-btn.entry-btc').forEach(b => {
-                                b.classList.toggle('active', parseInt(b.dataset.entries) === entBtc);
-                            });
+                            if (window.populateSymbolConfigs) {
+                                window.populateSymbolConfigs(s.config);
+                            }
 
                             if (s.config.enabled_tfs) {
                                 document.querySelectorAll('.tf-cb').forEach(cb => {
                                     cb.checked = s.config.enabled_tfs.includes(cb.value);
-                                });
-                            }
-
-                            if (s.config.enabled_symbols) {
-                                const shortSyms = mapSymbolsToShort(s.config.enabled_symbols);
-                                document.querySelectorAll('.symbol-cb').forEach(cb => {
-                                    cb.checked = shortSyms.includes(cb.value);
                                 });
                             }
 
