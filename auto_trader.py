@@ -8,7 +8,7 @@ import time
 from datetime import datetime
 from ema_strategy import EMAStrategy
 from kline_service import get_kline_service
-from config import LEVERAGE, SYMBOL, SUPPORTED_SYMBOLS, DEFAULT_SYMBOL
+from config import LEVERAGE, SYMBOL, DEFAULT_SYMBOL, SUPPORTED_SYMBOLS, is_valid_swap_symbol
 from feishu_bot import get_feishu_bot
 
 
@@ -31,7 +31,7 @@ class AutoTrader:
         self._stop_event = threading.Event()
 
         self.config = {
-            "enabled_tfs": ["5m", "15m"],
+            "enabled_tfs": {"ETH-USDT-SWAP": ["5m", "15m"], "BTC-USDT-SWAP": ["5m", "15m"]},
             "total_amount_usdt": {"ETH-USDT-SWAP": 100, "BTC-USDT-SWAP": 100},
             "num_entries": {"ETH-USDT-SWAP": 2, "BTC-USDT-SWAP": 2},
             "tp_points": {"ETH-USDT-SWAP": 50, "BTC-USDT-SWAP": 500},
@@ -160,10 +160,10 @@ class AutoTrader:
     def _check_once(self):
         enabled_symbols = self.config.get("enabled_symbols", [DEFAULT_SYMBOL])
         for symbol in enabled_symbols:
-            if symbol not in SUPPORTED_SYMBOLS:
+            if not is_valid_swap_symbol(symbol):
                 continue
             analysis_map = self.refresh_analysis(symbol)
-            enabled_tfs = self.config.get("enabled_tfs", [])
+            enabled_tfs = self._get_enabled_tfs(symbol)
             for tf in enabled_tfs:
                 if tf not in analysis_map:
                     continue
@@ -202,6 +202,13 @@ class AutoTrader:
 
     def _get_num_entries(self, symbol):
         return int(self._get_symbol_config("num_entries", symbol, 2))
+
+    def _get_enabled_tfs(self, symbol):
+        """按币种获取启用的周期列表，兼容旧版全局列表格式"""
+        val = self.config.get("enabled_tfs", ["5m", "15m"])
+        if isinstance(val, dict):
+            return val.get(symbol, val.get(DEFAULT_SYMBOL, ["5m", "15m"]))
+        return val
 
     def refresh_analysis(self, symbol=None):
         if symbol is None:
