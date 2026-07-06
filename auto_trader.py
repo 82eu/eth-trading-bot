@@ -300,7 +300,7 @@ class AutoTrader:
             if not kline_svc:
                 kline_svc = get_kline_service(symbol)
                 self.kline_services[symbol] = kline_svc
-            candles, source = kline_svc.fetch_klines(timeframe, 600, symbol)
+            candles, source = kline_svc.fetch_klines(timeframe, 300, symbol)
             return candles
         except Exception as e:
             logger.error(f"获取{symbol} {timeframe}K线失败: {e}")

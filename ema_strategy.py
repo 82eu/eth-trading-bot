@@ -22,7 +22,7 @@ class EMAStrategy:
         self.zone_width_threshold_pct = 0.2
 
     def calculate_ema(self, prices, period):
-        """计算EMA（返回最新值）"""
+        """计算EMA"""
         if len(prices) < period:
             return None
         multiplier = 2 / (period + 1)
@@ -30,22 +30,6 @@ class EMAStrategy:
         for price in prices[period:]:
             ema = (price - ema) * multiplier + ema
         return ema
-
-    def _calculate_ema_list(self, prices, period):
-        """计算EMA（返回完整历史列表）"""
-        if len(prices) < period:
-            return []
-        k = 2.0 / (period + 1)
-        ema_list = []
-        prev_ema = sum(prices[:period]) / period
-        for i in range(period - 1, len(prices)):
-            if i == period - 1:
-                cur = prev_ema
-            else:
-                cur = prices[i] * k + prev_ema * (1 - k)
-            ema_list.append(cur)
-            prev_ema = cur
-        return ema_list
 
     def analyze_tf(self, candles, timeframe):
         """
@@ -78,16 +62,21 @@ class EMAStrategy:
 
         is_ranging = zone_width_pct < self.zone_width_threshold_pct
 
-        ema180_list = self._calculate_ema_list(closes, self.ema_fast)
-        ema250_list = self._calculate_ema_list(closes, self.ema_slow)
+        ema180_history = []
+        ema250_history = []
+        for i in range(len(closes)):
+            e180 = self.calculate_ema(closes[:i+1], self.ema_fast)
+            e250 = self.calculate_ema(closes[:i+1], self.ema_slow)
+            if e180 and e250:
+                ema180_history.append(e180)
+                ema250_history.append(e250)
 
         crossing_count = 0
         min_cross_distance = float('inf')
         last_cross_idx = -1
-        min_len = min(len(ema180_list), len(ema250_list))
-        for i in range(1, min_len):
-            prev_diff = ema180_list[i-1] - ema250_list[i-1]
-            curr_diff = ema180_list[i] - ema250_list[i]
+        for i in range(1, len(ema180_history)):
+            prev_diff = ema180_history[i-1] - ema250_history[i-1]
+            curr_diff = ema180_history[i] - ema250_history[i]
             if prev_diff * curr_diff < 0:
                 crossing_count += 1
                 if last_cross_idx >= 0:
@@ -96,12 +85,12 @@ class EMAStrategy:
                         min_cross_distance = distance
                 last_cross_idx = i
 
-        lookback_periods = min(100, min_len)
+        lookback_periods = min(100, len(ema180_history))
         recent_crosses = 0
-        if min_len >= lookback_periods:
-            for i in range(min_len - lookback_periods, min_len - 1):
-                prev_diff = ema180_list[i] - ema250_list[i]
-                curr_diff = ema180_list[i+1] - ema250_list[i+1]
+        if len(ema180_history) >= lookback_periods:
+            for i in range(len(ema180_history) - lookback_periods, len(ema180_history) - 1):
+                prev_diff = ema180_history[i] - ema250_history[i]
+                curr_diff = ema180_history[i+1] - ema250_history[i+1]
                 if prev_diff * curr_diff < 0:
                     recent_crosses += 1
 
