@@ -1,10 +1,13 @@
 """
 K线服务 - 多数据源兜底
-顺序: Binance -> OKX -> Gate.io
+顺序: OKX -> Binance -> Gate.io合约 -> Gate.io现货
 统一输出格式: [ts, o, h, l, c, v] 字符串数组，时间从旧到新
 """
 import requests
 from loguru import logger
+
+
+REQUEST_TIMEOUT = 10
 
 
 class KlineService:
@@ -51,28 +54,34 @@ class KlineService:
 
     def fetch_klines(self, tf, limit=300, symbol=None):
         """
-        获取K线，依次尝试 OKX -> Binance -> Gate.io
+        获取K线，依次尝试 OKX -> Binance -> Gate.io合约 -> Gate.io现货
         返回 (candles, source_name) 失败返回 (None, None)
         candles 格式: [[ts, o, h, l, c, v], ...] 从旧到新
         """
         if symbol is None:
             symbol = self.default_symbol
 
-        sources = ["okx", "binance", "gate"]
+        sources = ["okx", "binance", "gate_futures", "gate_spot"]
         for src in sources:
             try:
                 if src == "binance":
                     candles = self._fetch_binance(symbol, tf, limit)
+                    src_name = "binance"
                 elif src == "okx":
                     candles = self._fetch_okx(symbol, tf, limit)
+                    src_name = "okx"
+                elif src == "gate_futures":
+                    candles = self._fetch_gate_futures(symbol, tf, limit)
+                    src_name = "gate合约"
                 else:
-                    candles = self._fetch_gate(symbol, tf, limit)
+                    candles = self._fetch_gate_spot(symbol, tf, limit)
+                    src_name = "gate现货"
 
                 if candles and len(candles) >= 260:
-                    logger.debug(f"K线来源: {src}, {tf}, {len(candles)}根")
-                    return candles, src
+                    logger.debug(f"K线来源: {src_name}, {tf}, {len(candles)}根")
+                    return candles, src_name
                 else:
-                    logger.warning(f"{src} K线数据不足: {len(candles) if candles else 0}根 (需要至少260根)")
+                    logger.warning(f"{src_name} K线数据不足: {len(candles) if candles else 0}根 (需要至少260根)")
             except Exception as e:
                 logger.warning(f"{src} 获取K线失败: {e}")
 
@@ -98,7 +107,7 @@ class KlineService:
             }
             if end_time:
                 params["endTime"] = end_time - 1
-            resp = requests.get(url, params=params, timeout=5)
+            resp = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
             data = resp.json()
             if not isinstance(data, list) or not data:
                 break
@@ -127,7 +136,7 @@ class KlineService:
         return result
 
     def _fetch_okx(self, symbol, tf, limit):
-        """OKX K线"""
+        """OKX 合约K线"""
         sym = self._get_symbol("okx", symbol)
         bar = self._get_tf("okx", tf)
         url = f"{self.base_urls['okx']}/api/v5/market/candles"
@@ -145,7 +154,7 @@ class KlineService:
             }
             if before:
                 params["before"] = before
-            resp = requests.get(url, params=params, timeout=5)
+            resp = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
             result = resp.json()
             if result.get("code") != "0":
                 return None
@@ -163,7 +172,7 @@ class KlineService:
 
         return all_data[::-1]
 
-    def _fetch_gate(self, symbol, tf, limit):
+    def _fetch_gate_futures(self, symbol, tf, limit):
         """Gate.io USDT永续合约K线"""
         sym = self._get_symbol("gate", symbol)
         interval = self._get_tf("gate", tf)
@@ -182,7 +191,54 @@ class KlineService:
             }
             if to_ts:
                 params["to"] = to_ts - 1
-            resp = requests.get(url, params=params, timeout=5)
+            resp = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
+            data = resp.json()
+            if not isinstance(data, list) or not data:
+                break
+            all_data = data + all_data
+            if len(data) < page_limit:
+                break
+            to_ts = int(data[0][0])
+            remaining -= len(data)
+            if len(all_data) >= limit:
+                all_data = all_data[-limit:]
+                break
+
+        if not all_data:
+            return None
+
+        result = []
+        for k in all_data:
+            result.append([
+                str(int(float(k[0])) * 1000),
+                str(k[5]),
+                str(k[3]),
+                str(k[4]),
+                str(k[2]),
+                str(k[1]),
+            ])
+        return result
+
+    def _fetch_gate_spot(self, symbol, tf, limit):
+        """Gate.io 现货K线（最后兜底）"""
+        sym = self._get_symbol("gate", symbol)
+        interval = self._get_tf("gate", tf)
+        url = f"{self.base_urls['gate']}/api/v4/spot/candlesticks"
+
+        all_data = []
+        remaining = limit
+        to_ts = None
+
+        while remaining > 0:
+            page_limit = min(remaining, 1000)
+            params = {
+                "currency_pair": sym,
+                "interval": interval,
+                "limit": page_limit,
+            }
+            if to_ts:
+                params["to"] = to_ts - 1
+            resp = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
             data = resp.json()
             if not isinstance(data, list) or not data:
                 break
