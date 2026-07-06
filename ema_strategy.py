@@ -160,19 +160,20 @@ class EMAStrategy:
     def get_entry_side(self, analysis, direction):
         """
         固定入场方向：
-        - 做多：从区间上沿(ema_high)往下跌着入场
-        - 做空：从区间下沿(ema_low)往上涨着入场
+        - 做多：回踩EMA180（快线），从上方跌下来在EMA180处接多
+        - 做空：反弹EMA180（快线），从下方涨上去在EMA180处接空
+        止损放在EMA250（慢线）外侧
         :param analysis: 单周期分析结果
         :param direction: 'long' / 'short'
         :return: (entry_ema, exit_ema) 入口EMA线、出口EMA线
         """
-        ema_high = analysis["ema_high"]
-        ema_low = analysis["ema_low"]
+        ema180 = analysis["ema180"]
+        ema250 = analysis["ema250"]
 
         if direction == "long":
-            return ema_high, ema_low
+            return ema180, ema250
         else:
-            return ema_low, ema_high
+            return ema180, ema250
 
     def calc_entry_levels(self, analysis, direction, num_entries=1):
         """
@@ -203,24 +204,21 @@ class EMAStrategy:
     def calc_stop_loss(self, analysis, direction, sl_points, current_entry_price=None):
         """
         计算止损价
-        逻辑：以离价格最远的那条EMA线为基准，加上固定止损点数
-        - 做多：止损 = 区间下沿(ema_low) - 止损点数
-        - 做空：止损 = 区间上沿(ema_high) + 止损点数
+        逻辑：以EMA250（慢线）为基准，加上固定止损点数
+        - 做多：止损 = EMA250 - 止损点数
+        - 做空：止损 = EMA250 + 止损点数
         :param analysis: 单周期分析结果
         :param direction: 'long' / 'short'
         :param sl_points: 止损点数（价格点数）
         :param current_entry_price: 当前入场价（None用现价）
         :return: 止损价
         """
-        ema_high = analysis["ema_high"]
-        ema_low = analysis["ema_low"]
+        ema250 = analysis["ema250"]
 
         if direction == "long":
-            farthest_ema = ema_low
-            stop_loss = farthest_ema - sl_points
+            stop_loss = ema250 - sl_points
         else:
-            farthest_ema = ema_high
-            stop_loss = farthest_ema + sl_points
+            stop_loss = ema250 + sl_points
 
         return stop_loss
 

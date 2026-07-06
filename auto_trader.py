@@ -232,6 +232,9 @@ class AutoTrader:
                 entries = self.strategy.calc_entry_levels(analysis, trend, num_entries)
                 sl_price = self._calc_sl_with_big_tf_check(analysis_map, tf, trend, self._get_sl_points(symbol))
                 
+                entries_str = ", ".join([f"{e['description']}={e['price']:.2f}" for e in entries])
+                self._add_log(f"[挂单][{symbol_name}][{tf}] 入场位: {entries_str}", "info")
+                
                 side = "buy" if trend == "long" else "sell"
                 tf_placed = 0
                 tf_skipped = 0
