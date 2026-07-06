@@ -755,6 +755,19 @@ def auto_stop():
     return jsonify({"code": 0, "msg": "自动交易已停止"})
 
 
+@app.route("/api/auto/refresh_pending", methods=["POST"])
+def auto_refresh_pending():
+    """手动刷新挂单"""
+    at = get_auto_trader()
+    if at is None:
+        return jsonify({"code": 1, "msg": "未初始化"}), 400
+    try:
+        at._update_pending_orders()
+        return jsonify({"code": 0, "msg": "挂单已刷新"})
+    except Exception as e:
+        return jsonify({"code": 1, "msg": f"刷新失败: {e}"}), 500
+
+
 @app.route("/api/auto/test", methods=["POST"])
 def auto_test():
     """
