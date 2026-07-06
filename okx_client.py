@@ -282,6 +282,15 @@ class OKXClient:
 
         return order_id
 
+    def _round_price_to_tick(self, symbol, price):
+        """按合约价格精度(tickSz)取整"""
+        inst = self.get_instruments(symbol)
+        if inst and "tickSz" in inst:
+            tick = float(inst["tickSz"])
+            if tick > 0:
+                return round(price / tick) * tick
+        return price
+
     def place_order(self, symbol, side, size, order_type="market", price=None, pos_side="long", leverage=None,
                     stop_loss=None, take_profit=None):
         """下单（HTTP直连，支持止盈止损）"""
@@ -296,6 +305,12 @@ class OKXClient:
             except Exception as e:
                 logger.warning(f"设置杠杆异常: {e}")
 
+            # 止盈止损价格按合约精度取整
+            if stop_loss is not None:
+                stop_loss = self._round_price_to_tick(symbol, float(stop_loss))
+            if take_profit is not None:
+                take_profit = self._round_price_to_tick(symbol, float(take_profit))
+
             body_dict = {
                 "instId": inst_id,
                 "tdMode": "cross",
@@ -305,7 +320,7 @@ class OKXClient:
                 "posSide": pos_side,
             }
             if order_type == "limit" and price:
-                body_dict["px"] = str(price)
+                body_dict["px"] = str(self._round_price_to_tick(symbol, float(price)))
 
             if stop_loss or take_profit:
                 attach_algo = {}

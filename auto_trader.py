@@ -225,7 +225,7 @@ class AutoTrader:
         return analysis_map
 
     def _calc_sl_with_big_tf_check(self, analysis_map, tf, direction, sl_points, current_price=None):
-        """计算止损价，并检查小周期止损是否落在大周期EMA区间内，是则缩减为1/3"""
+        """计算止损价，按用户设置的点数执行，不再自动缩减"""
         small_analysis = analysis_map.get(tf)
         if not small_analysis:
             if current_price:
@@ -235,31 +235,6 @@ class AutoTrader:
             return None
 
         sl_price = self.strategy.calc_stop_loss(small_analysis, direction, sl_points)
-        if current_price is None:
-            current_price = small_analysis["current_price"]
-
-        tf_order = self.strategy.TIMEFRAMES
-        if tf not in tf_order:
-            return sl_price
-        idx = tf_order.index(tf)
-
-        for i in range(idx + 1, len(tf_order)):
-            big_tf = tf_order[i]
-            big_analysis = analysis_map.get(big_tf)
-            if not big_analysis:
-                continue
-            big_ema_high = big_analysis["ema_high"]
-            big_ema_low = big_analysis["ema_low"]
-            if big_ema_low <= sl_price <= big_ema_high:
-                sl_distance = abs(current_price - sl_price)
-                new_sl_distance = sl_distance / 3
-                if direction == "long":
-                    sl_price = current_price - new_sl_distance
-                else:
-                    sl_price = current_price + new_sl_distance
-                logger.info(f"[{tf}] 止损落在{big_tf}区间内，缩减为1/3: {sl_price:.2f}")
-                break
-
         return sl_price
 
     def _check_tf_signal(self, symbol, tf, analysis_map):
@@ -349,8 +324,10 @@ class AutoTrader:
             self._add_log(f"[{symbol_name}][{tf}] 开{trend}成功 {open_amount}U @ {current_price:.2f}, 缓冲带[{round(ema_low - buf_w, 2)}, {round(ema_high + buf_w, 2)}]", "success")
             self._notify_feishu("trade_success", symbol=symbol, tf=tf, direction=trend, amount=open_amount, price=current_price, tp=tp_price, sl=sl_price, leverage=self.config["leverage"])
         else:
-            self._add_log(f"[{symbol_name}][{tf}] 开单失败", "error")
-            self._notify_feishu("trade_fail", symbol=symbol, tf=tf, direction=trend, amount=open_amount, price=current_price, leverage=self.config["leverage"])
+            err = getattr(self.client, 'last_error', '') or '未知错误'
+            logger.error(f"[{symbol_name}][{tf}] 开{trend}失败: {err}")
+            self._add_log(f"[{symbol_name}][{tf}] 开单失败: {err}", "error")
+            self._notify_feishu("trade_fail", symbol=symbol, tf=tf, direction=trend, amount=open_amount, price=current_price, leverage=self.config["leverage"], error=err)
 
     def test_open_order(self, timeframe, direction=None, symbol=None):
         if symbol is None:
