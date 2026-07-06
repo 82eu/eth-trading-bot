@@ -80,10 +80,10 @@ class KlineService:
         return None, None
 
     def _fetch_binance(self, symbol, tf, limit):
-        """Binance 现货K线（永续合约用fapi，这里简化用现货价格差不多）"""
+        """Binance 永续合约K线（跟币安APP上的合约图完全一致）"""
         sym = self._get_symbol("binance", symbol)
         interval = self._get_tf("binance", tf)
-        url = f"{self.base_urls['binance']}/api/v3/klines"
+        url = f"{self.base_urls['binance']}/fapi/v1/klines"
 
         all_data = []
         remaining = limit
