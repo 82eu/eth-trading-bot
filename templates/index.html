@@ -347,6 +347,61 @@
         }
         .btn-start-auto:hover { opacity: 0.9; transform: translateY(-1px); }
         .btn-start-auto.active { background: linear-gradient(135deg, #ef4444, #dc2626); }
+        .pending-mode-section {
+            margin-top: 10px;
+            padding: 10px 12px;
+            background: #0f1419;
+            border-radius: 8px;
+            border: 1px solid #2d3748;
+        }
+        .pending-mode-switch {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+        }
+        .pending-mode-switch input {
+            display: none;
+        }
+        .switch-slider {
+            width: 40px;
+            height: 22px;
+            background: #2d3748;
+            border-radius: 11px;
+            position: relative;
+            transition: background 0.2s;
+        }
+        .switch-slider::after {
+            content: '';
+            width: 18px;
+            height: 18px;
+            background: #a0aec0;
+            border-radius: 50%;
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            transition: all 0.2s;
+        }
+        .pending-mode-switch input:checked + .switch-slider {
+            background: #627eea;
+        }
+        .pending-mode-switch input:checked + .switch-slider::after {
+            left: 20px;
+            background: white;
+        }
+        .switch-label {
+            font-size: 13px;
+            color: #e7e9ea;
+            font-weight: 600;
+        }
+        .pending-mode-desc {
+            font-size: 11px;
+            color: #718096;
+            margin-top: 6px;
+        }
+        .pending-mode-desc.active {
+            color: #627eea;
+        }
         .auto-config-section { margin-top: 2px; }
         .config-label { font-size: 12px; color: #718096; margin-bottom: 6px; }
         .tf-selector { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -883,6 +938,15 @@
                                 <button class="lev-btn auto-lev-btn" data-lev="50">50x</button>
                                 <button class="lev-btn auto-lev-btn" data-lev="100">100x</button>
                             </div>
+                        </div>
+
+                        <div class="auto-config-section pending-mode-section">
+                            <label class="pending-mode-switch">
+                                <input type="checkbox" id="pendingOrderMode" onchange="togglePendingOrderMode()">
+                                <span class="switch-slider"></span>
+                                <span class="switch-label">挂单模式（每5分钟更新挂单）</span>
+                            </label>
+                            <div class="pending-mode-desc" id="pendingModeDesc">实时模式：价格触达时立即开单</div>
                         </div>
 
                         <div class="symbol-configs-section">
@@ -1573,6 +1637,37 @@
             }
         }
 
+        async function togglePendingOrderMode() {
+            const checkbox = document.getElementById('pendingOrderMode');
+            const desc = document.getElementById('pendingModeDesc');
+            const pendingMode = checkbox.checked;
+            
+            desc.textContent = pendingMode ? '挂单模式：每5分钟更新EMA位置并重新挂单' : '实时模式：价格触达时立即开单';
+            desc.classList.toggle('active', pendingMode);
+            
+            try {
+                const res = await fetch(API_BASE + '/api/auto/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pending_order_mode: pendingMode })
+                });
+                const data = await res.json();
+                if (data.code === 0) {
+                    showToast(pendingMode ? '挂单模式已启用' : '实时模式已启用', 'success');
+                } else {
+                    showToast('切换失败: ' + (data.msg || ''), 'error');
+                    checkbox.checked = !pendingMode;
+                    desc.textContent = !pendingMode ? '挂单模式：每5分钟更新EMA位置并重新挂单' : '实时模式：价格触达时立即开单';
+                    desc.classList.toggle('active', !pendingMode);
+                }
+            } catch (e) {
+                showToast('切换失败: ' + e.message, 'error');
+                checkbox.checked = !pendingMode;
+                desc.textContent = !pendingMode ? '挂单模式：每5分钟更新EMA位置并重新挂单' : '实时模式：价格触达时立即开单';
+                desc.classList.toggle('active', !pendingMode);
+            }
+        }
+
         async function fetchAutoStatus() {
             try {
                 const res = await fetch(API_BASE + '/api/auto/status');
@@ -1616,6 +1711,16 @@
                             feishuSwitch.checked = feishuEnabled;
                             feishuStatusText.textContent = feishuEnabled ? '已开启' : '已关闭';
                             feishuStatusText.style.color = feishuEnabled ? '#22c55e' : '#718096';
+
+                            // 同步挂单模式状态
+                            const pendingCheckbox = document.getElementById('pendingOrderMode');
+                            const pendingDesc = document.getElementById('pendingModeDesc');
+                            if (pendingCheckbox) {
+                                const pendingMode = s.config.pending_order_mode || s.pending_order_mode || false;
+                                pendingCheckbox.checked = pendingMode;
+                                pendingDesc.textContent = pendingMode ? '挂单模式：每5分钟更新EMA位置并重新挂单' : '实时模式：价格触达时立即开单';
+                                pendingDesc.classList.toggle('active', pendingMode);
+                            }
                         }
 
                         updateConfigDisplay(s.config, autoTradingRunning);
