@@ -51,14 +51,14 @@ class KlineService:
 
     def fetch_klines(self, tf, limit=300, symbol=None):
         """
-        获取K线，依次尝试 Binance -> OKX -> Gate.io
+        获取K线，依次尝试 OKX -> Binance -> Gate.io
         返回 (candles, source_name) 失败返回 (None, None)
         candles 格式: [[ts, o, h, l, c, v], ...] 从旧到新
         """
         if symbol is None:
             symbol = self.default_symbol
 
-        sources = ["binance", "okx", "gate"]
+        sources = ["okx", "binance", "gate"]
         for src in sources:
             try:
                 if src == "binance":
@@ -164,10 +164,10 @@ class KlineService:
         return all_data[::-1]
 
     def _fetch_gate(self, symbol, tf, limit):
-        """Gate.io K线"""
+        """Gate.io USDT永续合约K线"""
         sym = self._get_symbol("gate", symbol)
         interval = self._get_tf("gate", tf)
-        url = f"{self.base_urls['gate']}/api/v4/spot/candlesticks"
+        url = f"{self.base_urls['gate']}/api/v4/futures/usdt/klines"
 
         all_data = []
         remaining = limit
@@ -176,7 +176,7 @@ class KlineService:
         while remaining > 0:
             page_limit = min(remaining, 1000)
             params = {
-                "currency_pair": sym,
+                "contract": sym,
                 "interval": interval,
                 "limit": page_limit,
             }

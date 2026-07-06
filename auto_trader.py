@@ -224,7 +224,8 @@ class AutoTrader:
                 
                 trend = self.strategy.get_trend_direction(analysis_map, tf)
                 a = analysis_map[tf]
-                self._add_log(f"[挂单][{symbol_name}][{tf}] EMA180={a['ema180']:.2f}, EMA250={a['ema250']:.2f}, 纠缠={a.get('is_entangled', False)}, 交叉={a.get('recent_crosses', 0)}次, 趋势={trend}", "info")
+                src = a.get("source", "unknown")
+                self._add_log(f"[挂单][{symbol_name}][{tf}] 数据源={src}, EMA180={a['ema180']:.2f}, EMA250={a['ema250']:.2f}, 现价={current_price:.2f}, 趋势={trend}", "info")
                 if not trend or trend == "neutral":
                     self._add_log(f"[挂单][{symbol_name}][{tf}] 趋势不明确，跳过", "info")
                     continue
@@ -265,7 +266,7 @@ class AutoTrader:
                     if order_id:
                         tf_placed += 1
                         total_placed += 1
-                        self._add_log(f"[挂单][{symbol_name}][{tf}] {trend} {entry['description']} 挂单成功: {entry_amount}U @ {entry_price:.2f}, TP={tp_price:.2f}, SL={sl_price:.2f}", "success")
+                        self._add_log(f"[挂单][{symbol_name}][{tf}] {trend} {entry['description']} 挂单成功: {entry_amount:.2f}U @ {entry_price:.2f}, TP={tp_price:.2f}, SL={sl_price:.2f}", "success")
                     else:
                         err = getattr(self.client, 'last_error', '')
                         if '51006' in err or 'price limit' in err.lower():
@@ -301,10 +302,10 @@ class AutoTrader:
                 kline_svc = get_kline_service(symbol)
                 self.kline_services[symbol] = kline_svc
             candles, source = kline_svc.fetch_klines(timeframe, 300, symbol)
-            return candles
+            return candles, source
         except Exception as e:
             logger.error(f"获取{symbol} {timeframe}K线失败: {e}")
-            return None
+            return None, None
 
     def _get_symbol_config(self, key, symbol, default_val):
         """按币种获取配置值，支持旧版单值和新版dict格式"""
@@ -341,7 +342,7 @@ class AutoTrader:
         analysis_map = {}
         symbol_name = symbol.split("-")[0]
         for tf in self.strategy.TIMEFRAMES:
-            candles = self._get_candles(symbol, tf)
+            candles, source = self._get_candles(symbol, tf)
             if not candles:
                 err_msg = f"[分析][{symbol_name}][{tf}] K线获取失败，所有数据源均不可用"
                 logger.warning(err_msg)
@@ -350,6 +351,7 @@ class AutoTrader:
             try:
                 analysis = self.strategy.analyze_tf(candles, tf)
                 if analysis:
+                    analysis["source"] = source or "unknown"
                     analysis_map[tf] = analysis
                 else:
                     err_msg = f"[分析][{symbol_name}][{tf}] 策略分析失败，K线数量={len(candles)} (需要至少250根)"
