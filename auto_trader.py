@@ -5,7 +5,7 @@
 from loguru import logger
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from ema_strategy import EMAStrategy
 from kline_service import get_kline_service
 from config import LEVERAGE, SYMBOL, DEFAULT_SYMBOL, SUPPORTED_SYMBOLS, is_valid_swap_symbol
@@ -192,6 +192,7 @@ class AutoTrader:
             
             symbol_name = symbol.split("-")[0]
             enabled_tfs = self._get_enabled_tfs(symbol)
+            self._add_log(f"[挂单][{symbol_name}] 启用周期: {enabled_tfs}", "info")
             
             ticker = self.client.get_ticker(symbol)
             if not ticker:
@@ -222,6 +223,8 @@ class AutoTrader:
                     continue
                 
                 trend = self.strategy.get_trend_direction(analysis_map, tf)
+                a = analysis_map[tf]
+                self._add_log(f"[挂单][{symbol_name}][{tf}] EMA180={a['ema180']:.2f}, EMA250={a['ema250']:.2f}, 纠缠={a.get('is_entangled', False)}, 交叉={a.get('recent_crosses', 0)}次, 趋势={trend}", "info")
                 if not trend or trend == "neutral":
                     self._add_log(f"[挂单][{symbol_name}][{tf}] 趋势不明确，跳过", "info")
                     continue
@@ -606,8 +609,9 @@ class AutoTrader:
             return False, msg
 
     def _add_log(self, msg, level="info"):
+        now_cn = datetime.now(timezone.utc) + timedelta(hours=8)
         self.signal_logs.append({
-            "time": datetime.now().strftime("%H:%M:%S"),
+            "time": now_cn.strftime("%H:%M:%S"),
             "msg": msg,
             "level": level,
         })

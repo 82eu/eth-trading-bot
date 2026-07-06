@@ -97,7 +97,7 @@ class EMAStrategy:
         is_entangled = False
         if crossing_count >= 3 and min_cross_distance <= 30:
             is_entangled = True
-        elif recent_crosses >= 2:
+        elif recent_crosses >= 3:
             is_entangled = True
 
         return {
@@ -120,10 +120,11 @@ class EMAStrategy:
 
     def get_trend_direction(self, analysis_map, timeframe):
         """
-        获取趋势方向（仅EMA线纠缠时递推到大周期）
-        从起始周期开始，若当前周期EMA180和EMA250纠缠在一起（反复交叉，交点距离太近），则向上递推
-        直到找到EMA线分离的周期，以其趋势为准
-        每个周期用自己的EMA位置挂单，趋势方向可以参考大周期
+        获取趋势方向：
+        1. 价格在EMA区间上方 → 趋势=long（回踩做多）
+        2. 价格在EMA区间下方 → 趋势=short（反弹做空）
+        3. 价格在区间内且线纠缠 → 递推到大周期
+        4. 价格在区间内但线不纠缠 → 用当前周期EMA排列方向
         :param analysis_map: {tf: analysis_result}
         :param timeframe: 起始周期
         :return: 'long' / 'short' / 'neutral'
@@ -133,16 +134,28 @@ class EMAStrategy:
             return "neutral"
         idx = tf_order.index(timeframe)
 
-        for i in range(idx, len(tf_order)):
-            tf = tf_order[i]
-            if tf in analysis_map and analysis_map[tf]:
-                a = analysis_map[tf]
-                if not a.get("is_entangled", False):
-                    return a["trend"]
+        current_tf = tf_order[idx]
+        if current_tf not in analysis_map or not analysis_map[current_tf]:
+            return "neutral"
 
-        if timeframe in analysis_map and analysis_map[timeframe]:
-            return analysis_map[timeframe]["trend"]
-        return "neutral"
+        a = analysis_map[current_tf]
+        price = a["current_price"]
+        ema_high = a["ema_high"]
+        ema_low = a["ema_low"]
+
+        if price > ema_high:
+            return "long"
+        elif price < ema_low:
+            return "short"
+        else:
+            for i in range(idx, len(tf_order)):
+                tf = tf_order[i]
+                if tf in analysis_map and analysis_map[tf]:
+                    ai = analysis_map[tf]
+                    if not ai.get("is_entangled", False):
+                        return ai["trend"]
+
+            return a["trend"]
 
     def get_entry_side(self, analysis, direction):
         """
@@ -176,7 +189,7 @@ class EMAStrategy:
 
         entries = []
         if num_entries == 1:
-            entries.append({"index": 1, "price": center, "description": "中心线"})
+            entries.append({"index": 1, "price": entry_line, "description": "入口EMA"})
         elif num_entries == 2:
             entries.append({"index": 1, "price": entry_line, "description": "入口EMA"})
             entries.append({"index": 2, "price": center, "description": "中心线"})
