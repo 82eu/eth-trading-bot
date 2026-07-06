@@ -1,6 +1,6 @@
 """
 K线服务 - 多数据源兜底
-顺序: OKX -> Binance -> Gate.io合约 -> Gate.io现货
+顺序: Binance现货 -> OKX合约 -> Binance合约 -> Gate.io合约 -> Gate.io现货
 统一输出格式: [ts, o, h, l, c, v] 字符串数组，时间从旧到新
 """
 import requests
@@ -9,6 +9,8 @@ from loguru import logger
 
 REQUEST_TIMEOUT = 10
 
+NO_PROXY = {"http": None, "https": None}
+
 
 class KlineService:
     """多数据源K线服务"""
@@ -16,24 +18,26 @@ class KlineService:
     SYMBOL_MAP = {
         "ETH-USDT-SWAP": {
             "binance": "ETHUSDT",
+            "binance_spot": "ETHUSDT",
             "okx": "ETH-USDT-SWAP",
             "gate": "ETH_USDT",
         },
         "BTC-USDT-SWAP": {
             "binance": "BTCUSDT",
+            "binance_spot": "BTCUSDT",
             "okx": "BTC-USDT-SWAP",
             "gate": "BTC_USDT",
         },
     }
 
     TF_MAP = {
-        "1m": {"binance": "1m", "okx": "1m", "gate": "1m"},
-        "5m": {"binance": "5m", "okx": "5m", "gate": "5m"},
-        "15m": {"binance": "15m", "okx": "15m", "gate": "15m"},
-        "30m": {"binance": "30m", "okx": "30m", "gate": "30m"},
-        "1h": {"binance": "1h", "okx": "1H", "gate": "1h"},
-        "4h": {"binance": "4h", "okx": "4H", "gate": "4h"},
-        "1d": {"binance": "1d", "okx": "1D", "gate": "1d"},
+        "1m": {"binance": "1m", "binance_spot": "1m", "okx": "1m", "gate": "1m"},
+        "5m": {"binance": "5m", "binance_spot": "5m", "okx": "5m", "gate": "5m"},
+        "15m": {"binance": "15m", "binance_spot": "15m", "okx": "15m", "gate": "15m"},
+        "30m": {"binance": "30m", "binance_spot": "30m", "okx": "30m", "gate": "30m"},
+        "1h": {"binance": "1h", "binance_spot": "1h", "okx": "1H", "gate": "1h"},
+        "4h": {"binance": "4h", "binance_spot": "4h", "okx": "4H", "gate": "4h"},
+        "1d": {"binance": "1d", "binance_spot": "1d", "okx": "1D", "gate": "1d"},
     }
 
     def __init__(self, default_symbol="ETH-USDT-SWAP"):
@@ -54,22 +58,25 @@ class KlineService:
 
     def fetch_klines(self, tf, limit=300, symbol=None):
         """
-        获取K线，依次尝试 OKX -> Binance -> Gate.io合约 -> Gate.io现货
+        获取K线，依次尝试 Binance现货 -> OKX合约 -> Binance合约 -> Gate.io合约 -> Gate.io现货
         返回 (candles, source_name) 失败返回 (None, None)
         candles 格式: [[ts, o, h, l, c, v], ...] 从旧到新
         """
         if symbol is None:
             symbol = self.default_symbol
 
-        sources = ["okx", "binance", "gate_futures", "gate_spot"]
+        sources = ["binance_spot", "okx", "binance_futures", "gate_futures", "gate_spot"]
         for src in sources:
             try:
-                if src == "binance":
-                    candles = self._fetch_binance(symbol, tf, limit)
-                    src_name = "binance"
+                if src == "binance_spot":
+                    candles = self._fetch_binance_spot(symbol, tf, limit)
+                    src_name = "币安现货"
                 elif src == "okx":
                     candles = self._fetch_okx(symbol, tf, limit)
-                    src_name = "okx"
+                    src_name = "okx合约"
+                elif src == "binance_futures":
+                    candles = self._fetch_binance_futures(symbol, tf, limit)
+                    src_name = "币安合约"
                 elif src == "gate_futures":
                     candles = self._fetch_gate_futures(symbol, tf, limit)
                     src_name = "gate合约"
@@ -88,8 +95,55 @@ class KlineService:
         logger.error(f"所有数据源获取K线失败: {tf}")
         return None, None
 
-    def _fetch_binance(self, symbol, tf, limit):
-        """Binance 永续合约K线（跟币安APP上的合约图完全一致）"""
+    def _fetch_binance_spot(self, symbol, tf, limit):
+        """Binance 现货K线（跟币安APP上的现货图完全一致）"""
+        sym = self._get_symbol("binance_spot", symbol)
+        interval = self._get_tf("binance_spot", tf)
+        url = f"{self.base_urls['binance']}/api/v3/klines"
+
+        all_data = []
+        remaining = limit
+        end_time = None
+
+        while remaining > 0:
+            page_limit = min(remaining, 1000)
+            params = {
+                "symbol": sym,
+                "interval": interval,
+                "limit": page_limit,
+            }
+            if end_time:
+                params["endTime"] = end_time - 1
+            resp = requests.get(url, params=params, timeout=REQUEST_TIMEOUT, proxies=NO_PROXY)
+            data = resp.json()
+            if not isinstance(data, list) or not data:
+                break
+            all_data = data + all_data
+            if len(data) < page_limit:
+                break
+            end_time = int(data[0][0])
+            remaining -= len(data)
+            if len(all_data) >= limit:
+                all_data = all_data[-limit:]
+                break
+
+        if not all_data:
+            return None
+
+        result = []
+        for k in all_data:
+            result.append([
+                str(k[0]),
+                str(k[1]),
+                str(k[2]),
+                str(k[3]),
+                str(k[4]),
+                str(k[5]),
+            ])
+        return result
+
+    def _fetch_binance_futures(self, symbol, tf, limit):
+        """Binance 永续合约K线"""
         sym = self._get_symbol("binance", symbol)
         interval = self._get_tf("binance", tf)
         url = f"{self.base_urls['binance']}/fapi/v1/klines"
@@ -107,7 +161,7 @@ class KlineService:
             }
             if end_time:
                 params["endTime"] = end_time - 1
-            resp = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
+            resp = requests.get(url, params=params, timeout=REQUEST_TIMEOUT, proxies=NO_PROXY)
             data = resp.json()
             if not isinstance(data, list) or not data:
                 break
@@ -154,7 +208,7 @@ class KlineService:
             }
             if before:
                 params["before"] = before
-            resp = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
+            resp = requests.get(url, params=params, timeout=REQUEST_TIMEOUT, proxies=NO_PROXY)
             result = resp.json()
             if result.get("code") != "0":
                 return None
@@ -191,7 +245,7 @@ class KlineService:
             }
             if to_ts:
                 params["to"] = to_ts - 1
-            resp = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
+            resp = requests.get(url, params=params, timeout=REQUEST_TIMEOUT, proxies=NO_PROXY)
             data = resp.json()
             if not isinstance(data, list) or not data:
                 break
@@ -238,7 +292,7 @@ class KlineService:
             }
             if to_ts:
                 params["to"] = to_ts - 1
-            resp = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
+            resp = requests.get(url, params=params, timeout=REQUEST_TIMEOUT, proxies=NO_PROXY)
             data = resp.json()
             if not isinstance(data, list) or not data:
                 break

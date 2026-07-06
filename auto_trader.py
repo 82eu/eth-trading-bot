@@ -225,7 +225,9 @@ class AutoTrader:
                 trend = self.strategy.get_trend_direction(analysis_map, tf)
                 a = analysis_map[tf]
                 src = a.get("source", "unknown")
-                self._add_log(f"[挂单][{symbol_name}][{tf}] 数据源={src}, EMA180={a['ema180']:.2f}, EMA250={a['ema250']:.2f}, 现价={current_price:.2f}, 趋势={trend}", "info")
+                cnt = a.get("candle_count", 0)
+                lc = a.get("last_close", 0)
+                self._add_log(f"[挂单][{symbol_name}][{tf}] 数据源={src}, K线={cnt}根, 最新收盘={lc:.2f}, EMA180={a['ema180']:.2f}, EMA250={a['ema250']:.2f}, 现价={current_price:.2f}, 趋势={trend}", "info")
                 if not trend or trend == "neutral":
                     self._add_log(f"[挂单][{symbol_name}][{tf}] 趋势不明确，跳过", "info")
                     continue
@@ -301,7 +303,7 @@ class AutoTrader:
             if not kline_svc:
                 kline_svc = get_kline_service(symbol)
                 self.kline_services[symbol] = kline_svc
-            candles, source = kline_svc.fetch_klines(timeframe, 300, symbol)
+            candles, source = kline_svc.fetch_klines(timeframe, 500, symbol)
             return candles, source
         except Exception as e:
             logger.error(f"获取{symbol} {timeframe}K线失败: {e}")
@@ -352,6 +354,8 @@ class AutoTrader:
                 analysis = self.strategy.analyze_tf(candles, tf)
                 if analysis:
                     analysis["source"] = source or "unknown"
+                    analysis["candle_count"] = len(candles)
+                    analysis["last_close"] = float(candles[-1][4])
                     analysis_map[tf] = analysis
                 else:
                     err_msg = f"[分析][{symbol_name}][{tf}] 策略分析失败，K线数量={len(candles)} (需要至少250根)"
