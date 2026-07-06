@@ -341,10 +341,17 @@ class AutoTrader:
         analysis_map = {}
         for tf in self.strategy.TIMEFRAMES:
             candles = self._get_candles(symbol, tf)
-            if candles:
+            if not candles:
+                logger.warning(f"{symbol} {tf} K线获取失败")
+                continue
+            try:
                 analysis = self.strategy.analyze_tf(candles, tf)
                 if analysis:
                     analysis_map[tf] = analysis
+                else:
+                    logger.warning(f"{symbol} {tf} 分析失败，返回None，K线数量={len(candles)}")
+            except Exception as e:
+                logger.error(f"{symbol} {tf} 分析异常: {e}")
         self.analysis_cache[symbol] = analysis_map
         self.last_check_time = datetime.now()
         return analysis_map
