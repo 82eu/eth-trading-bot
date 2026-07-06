@@ -182,7 +182,6 @@ class AutoTrader:
             symbol_name = symbol.split("-")[0]
             enabled_tfs = self._get_enabled_tfs(symbol)
             
-            # 用第一个启用的周期来判断趋势和EMA位置
             primary_tf = enabled_tfs[0] if enabled_tfs else "5m"
             
             candles = self._get_candles(symbol, primary_tf)
@@ -195,19 +194,22 @@ class AutoTrader:
                 self._add_log(f"[挂单][{symbol_name}] 分析失败", "error")
                 continue
             
-            # 获取趋势方向
+            ticker = self.client.get_ticker(symbol)
+            if not ticker:
+                self._add_log(f"[挂单][{symbol_name}] 获取行情失败", "error")
+                continue
+            current_price = ticker["last"]
+            
             analysis_map = self.refresh_analysis(symbol)
             trend = self.strategy.get_trend_direction(analysis_map, primary_tf)
             if not trend or trend == "neutral":
                 self._add_log(f"[挂单][{symbol_name}] 趋势不明确，跳过", "info")
                 continue
             
-            # 取消旧的挂单
             cancelled = self.client.cancel_all_pending_orders(symbol)
             if cancelled:
                 self._add_log(f"[挂单][{symbol_name}] 已取消旧挂单", "info")
             
-            # 计算新的挂单位置
             num_entries = self._get_num_entries(symbol)
             total_amount = self._get_total_amount(symbol)
             entry_amount = total_amount / num_entries
@@ -216,12 +218,19 @@ class AutoTrader:
             sl_price = self._calc_sl_with_big_tf_check(analysis_map, primary_tf, trend, self._get_sl_points(symbol))
             leverage = self.config.get("leverage", LEVERAGE)
             
-            # 挂新的限价单
             side = "buy" if trend == "long" else "sell"
             placed_count = 0
+            skipped_count = 0
             
             for entry in entries:
                 entry_price = entry["price"]
+                
+                price_distance_pct = abs(entry_price - current_price) / current_price * 100
+                if price_distance_pct > 0.9:
+                    skipped_count += 1
+                    self._add_log(f"[挂单][{symbol_name}] {entry['description']} 跳过: 价格偏离{price_distance_pct:.1f}%超出OKX限制({entry_price:.2f} vs 现价{current_price:.2f})", "info")
+                    continue
+                
                 tp_price = entry_price + self._get_tp_points(symbol) if trend == "long" else entry_price - self._get_tp_points(symbol)
                 
                 order_id = self.client.place_limit_order_with_tpsl(
@@ -236,7 +245,7 @@ class AutoTrader:
                     err = getattr(self.client, 'last_error', '')
                     self._add_log(f"[挂单][{symbol_name}] {entry['description']} 挂单失败: {err}", "error")
             
-            self._add_log(f"[挂单][{symbol_name}] 完成，成功挂单{placed_count}/{num_entries}个", "info")
+            self._add_log(f"[挂单][{symbol_name}] 完成，成功挂单{placed_count}/{num_entries}个，跳过{skipped_count}个(偏离过大)", "info")
         
         self._last_pending_update = now
 
