@@ -74,6 +74,17 @@ class AutoTrader:
         self._stop_event.set()
         if self._thread:
             self._thread.join(timeout=5)
+        
+        # 取消所有挂单
+        enabled_symbols = self.config.get("enabled_symbols", [DEFAULT_SYMBOL])
+        for symbol in enabled_symbols:
+            try:
+                self.client.cancel_all_pending_orders(symbol)
+                symbol_name = symbol.split("-")[0]
+                self._add_log(f"[{symbol_name}] 已取消所有挂单", "info")
+            except Exception as e:
+                logger.error(f"取消挂单异常: {e}")
+        
         logger.info("自动交易已停止")
         self._add_log("自动交易已停止", "info")
         self._notify_feishu("auto_stop")
