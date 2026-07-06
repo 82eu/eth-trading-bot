@@ -224,13 +224,6 @@ class AutoTrader:
             
             for entry in entries:
                 entry_price = entry["price"]
-                
-                price_distance_pct = abs(entry_price - current_price) / current_price * 100
-                if price_distance_pct > 0.9:
-                    skipped_count += 1
-                    self._add_log(f"[挂单][{symbol_name}] {entry['description']} 跳过: 价格偏离{price_distance_pct:.1f}%超出OKX限制({entry_price:.2f} vs 现价{current_price:.2f})", "info")
-                    continue
-                
                 tp_price = entry_price + self._get_tp_points(symbol) if trend == "long" else entry_price - self._get_tp_points(symbol)
                 
                 order_id = self.client.place_limit_order_with_tpsl(
@@ -243,7 +236,11 @@ class AutoTrader:
                     self._add_log(f"[挂单][{symbol_name}] {trend} {entry['description']} 挂单成功: {entry_amount}U @ {entry_price:.2f}, TP={tp_price:.2f}, SL={sl_price:.2f}", "success")
                 else:
                     err = getattr(self.client, 'last_error', '')
-                    self._add_log(f"[挂单][{symbol_name}] {entry['description']} 挂单失败: {err}", "error")
+                    if '51006' in err or 'price limit' in err.lower():
+                        skipped_count += 1
+                        self._add_log(f"[挂单][{symbol_name}] {entry['description']} 价格偏离过大暂不挂({entry_price:.2f} vs 现价{current_price:.2f})", "info")
+                    else:
+                        self._add_log(f"[挂单][{symbol_name}] {entry['description']} 挂单失败: {err}", "error")
             
             self._add_log(f"[挂单][{symbol_name}] 完成，成功挂单{placed_count}/{num_entries}个，跳过{skipped_count}个(偏离过大)", "info")
         
