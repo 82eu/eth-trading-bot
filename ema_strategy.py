@@ -62,6 +62,44 @@ class EMAStrategy:
 
         is_ranging = zone_width_pct < self.zone_width_threshold_pct
 
+        ema180_history = []
+        ema250_history = []
+        for i in range(len(closes)):
+            e180 = self.calculate_ema(closes[:i+1], self.ema_fast)
+            e250 = self.calculate_ema(closes[:i+1], self.ema_slow)
+            if e180 and e250:
+                ema180_history.append(e180)
+                ema250_history.append(e250)
+
+        crossing_count = 0
+        min_cross_distance = float('inf')
+        last_cross_idx = -1
+        for i in range(1, len(ema180_history)):
+            prev_diff = ema180_history[i-1] - ema250_history[i-1]
+            curr_diff = ema180_history[i] - ema250_history[i]
+            if prev_diff * curr_diff < 0:
+                crossing_count += 1
+                if last_cross_idx >= 0:
+                    distance = i - last_cross_idx
+                    if distance < min_cross_distance:
+                        min_cross_distance = distance
+                last_cross_idx = i
+
+        lookback_periods = min(100, len(ema180_history))
+        recent_crosses = 0
+        if len(ema180_history) >= lookback_periods:
+            for i in range(len(ema180_history) - lookback_periods, len(ema180_history) - 1):
+                prev_diff = ema180_history[i] - ema250_history[i]
+                curr_diff = ema180_history[i+1] - ema250_history[i+1]
+                if prev_diff * curr_diff < 0:
+                    recent_crosses += 1
+
+        is_entangled = False
+        if crossing_count >= 3 and min_cross_distance <= 30:
+            is_entangled = True
+        elif recent_crosses >= 2:
+            is_entangled = True
+
         return {
             "tf": timeframe,
             "ema180": ema180,
@@ -75,13 +113,17 @@ class EMAStrategy:
             "zone_width": zone_width,
             "zone_width_pct": zone_width_pct,
             "is_ranging": is_ranging,
+            "is_entangled": is_entangled,
+            "crossing_count": crossing_count,
+            "recent_crosses": recent_crosses,
         }
 
     def get_trend_direction(self, analysis_map, timeframe):
         """
-        获取趋势方向（震荡时递推到大周期）
-        从起始周期开始，若当前周期区间太窄（震荡/走得乱）则向上递推
-        直到找到区间足够宽的周期，以其趋势为准
+        获取趋势方向（仅EMA线纠缠时递推到大周期）
+        从起始周期开始，若当前周期EMA180和EMA250纠缠在一起（反复交叉，交点距离太近），则向上递推
+        直到找到EMA线分离的周期，以其趋势为准
+        每个周期用自己的EMA位置挂单，趋势方向可以参考大周期
         :param analysis_map: {tf: analysis_result}
         :param timeframe: 起始周期
         :return: 'long' / 'short' / 'neutral'
@@ -95,7 +137,7 @@ class EMAStrategy:
             tf = tf_order[i]
             if tf in analysis_map and analysis_map[tf]:
                 a = analysis_map[tf]
-                if not a.get("is_ranging", False):
+                if not a.get("is_entangled", False):
                     return a["trend"]
 
         if timeframe in analysis_map and analysis_map[timeframe]:
@@ -104,25 +146,20 @@ class EMAStrategy:
 
     def get_entry_side(self, analysis, direction):
         """
-        判断价格从哪一侧进入区间，确定入口/出口EMA
+        固定入场方向：
+        - 做多：从区间上沿(ema_high)往下跌着入场
+        - 做空：从区间下沿(ema_low)往上涨着入场
         :param analysis: 单周期分析结果
         :param direction: 'long' / 'short'
         :return: (entry_ema, exit_ema) 入口EMA线、出口EMA线
         """
         ema_high = analysis["ema_high"]
         ema_low = analysis["ema_low"]
-        current_price = analysis["current_price"]
 
         if direction == "long":
-            if current_price >= ema_high:
-                return ema_high, ema_low
-            else:
-                return ema_low, ema_high
+            return ema_high, ema_low
         else:
-            if current_price <= ema_low:
-                return ema_low, ema_high
-            else:
-                return ema_high, ema_low
+            return ema_low, ema_high
 
     def calc_entry_levels(self, analysis, direction, num_entries=1):
         """

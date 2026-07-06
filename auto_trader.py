@@ -182,18 +182,6 @@ class AutoTrader:
             symbol_name = symbol.split("-")[0]
             enabled_tfs = self._get_enabled_tfs(symbol)
             
-            primary_tf = enabled_tfs[0] if enabled_tfs else "5m"
-            
-            candles = self._get_candles(symbol, primary_tf)
-            if not candles:
-                self._add_log(f"[挂单][{symbol_name}] 获取K线失败", "error")
-                continue
-            
-            analysis = self.strategy.analyze_tf(candles, primary_tf)
-            if not analysis:
-                self._add_log(f"[挂单][{symbol_name}] 分析失败", "error")
-                continue
-            
             ticker = self.client.get_ticker(symbol)
             if not ticker:
                 self._add_log(f"[挂单][{symbol_name}] 获取行情失败", "error")
@@ -201,11 +189,8 @@ class AutoTrader:
             current_price = ticker["last"]
             
             analysis_map = self.refresh_analysis(symbol)
-            trend = self.strategy.get_trend_direction(analysis_map, primary_tf)
-            if not trend or trend == "neutral":
-                self._add_log(f"[挂单][{symbol_name}] 趋势不明确，跳过", "info")
-                continue
             
+            # 先取消所有旧挂单
             cancelled = self.client.cancel_all_pending_orders(symbol)
             if cancelled:
                 self._add_log(f"[挂单][{symbol_name}] 已取消旧挂单", "info")
@@ -213,36 +198,56 @@ class AutoTrader:
             num_entries = self._get_num_entries(symbol)
             total_amount = self._get_total_amount(symbol)
             entry_amount = total_amount / num_entries
-            
-            entries = self.strategy.calc_entry_levels(analysis, trend, num_entries)
-            sl_price = self._calc_sl_with_big_tf_check(analysis_map, primary_tf, trend, self._get_sl_points(symbol))
             leverage = self.config.get("leverage", LEVERAGE)
             
-            side = "buy" if trend == "long" else "sell"
-            placed_count = 0
-            skipped_count = 0
+            total_placed = 0
+            total_skipped = 0
             
-            for entry in entries:
-                entry_price = entry["price"]
-                tp_price = entry_price + self._get_tp_points(symbol) if trend == "long" else entry_price - self._get_tp_points(symbol)
+            # 每个启用的周期都挂单
+            for tf in enabled_tfs:
+                analysis = analysis_map.get(tf)
+                if not analysis:
+                    self._add_log(f"[挂单][{symbol_name}][{tf}] 无分析数据，跳过", "info")
+                    continue
                 
-                order_id = self.client.place_limit_order_with_tpsl(
-                    symbol, side, entry_amount, entry_price, trend,
-                    stop_loss=sl_price, take_profit=tp_price, leverage=leverage
-                )
+                trend = self.strategy.get_trend_direction(analysis_map, tf)
+                if not trend or trend == "neutral":
+                    self._add_log(f"[挂单][{symbol_name}][{tf}] 趋势不明确，跳过", "info")
+                    continue
                 
-                if order_id:
-                    placed_count += 1
-                    self._add_log(f"[挂单][{symbol_name}] {trend} {entry['description']} 挂单成功: {entry_amount}U @ {entry_price:.2f}, TP={tp_price:.2f}, SL={sl_price:.2f}", "success")
-                else:
-                    err = getattr(self.client, 'last_error', '')
-                    if '51006' in err or 'price limit' in err.lower():
-                        skipped_count += 1
-                        self._add_log(f"[挂单][{symbol_name}] {entry['description']} 价格偏离过大暂不挂({entry_price:.2f} vs 现价{current_price:.2f})", "info")
+                entries = self.strategy.calc_entry_levels(analysis, trend, num_entries)
+                sl_price = self._calc_sl_with_big_tf_check(analysis_map, tf, trend, self._get_sl_points(symbol))
+                
+                side = "buy" if trend == "long" else "sell"
+                tf_placed = 0
+                tf_skipped = 0
+                
+                for entry in entries:
+                    entry_price = entry["price"]
+                    tp_price = entry_price + self._get_tp_points(symbol) if trend == "long" else entry_price - self._get_tp_points(symbol)
+                    
+                    order_id = self.client.place_limit_order_with_tpsl(
+                        symbol, side, entry_amount, entry_price, trend,
+                        stop_loss=sl_price, take_profit=tp_price, leverage=leverage
+                    )
+                    
+                    if order_id:
+                        tf_placed += 1
+                        total_placed += 1
+                        self._add_log(f"[挂单][{symbol_name}][{tf}] {trend} {entry['description']} 挂单成功: {entry_amount}U @ {entry_price:.2f}, TP={tp_price:.2f}, SL={sl_price:.2f}", "success")
                     else:
-                        self._add_log(f"[挂单][{symbol_name}] {entry['description']} 挂单失败: {err}", "error")
+                        err = getattr(self.client, 'last_error', '')
+                        if '51006' in err or 'price limit' in err.lower():
+                            tf_skipped += 1
+                            total_skipped += 1
+                            self._add_log(f"[挂单][{symbol_name}][{tf}] {entry['description']} 价格偏离过大暂不挂({entry_price:.2f} vs 现价{current_price:.2f})", "info")
+                        else:
+                            self._add_log(f"[挂单][{symbol_name}][{tf}] {entry['description']} 挂单失败: {err}", "error")
+                
+                if tf_placed > 0 or tf_skipped > 0:
+                    self._add_log(f"[挂单][{symbol_name}][{tf}] 完成，挂单{tf_placed}/{num_entries}个，跳过{tf_skipped}个", "info")
             
-            self._add_log(f"[挂单][{symbol_name}] 完成，成功挂单{placed_count}/{num_entries}个，跳过{skipped_count}个(偏离过大)", "info")
+            self._add_log(f"[挂单][{symbol_name}] 全部周期完成，共挂单{total_placed}个，跳过{total_skipped}个", "info")
         
         self._last_pending_update = now
 
