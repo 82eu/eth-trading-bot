@@ -947,6 +947,7 @@
                                 <span class="switch-label">挂单模式（每5分钟更新挂单）</span>
                             </label>
                             <div class="pending-mode-desc" id="pendingModeDesc">实时模式：价格触达时立即开单</div>
+                            <button class="btn-refresh-pending" onclick="refreshPendingOrders()" style="margin-top:8px;width:100%;padding:6px;background:#2d3748;color:#a0aec0;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;">手动刷新挂单</button>
                         </div>
 
                         <div class="symbol-configs-section">
@@ -1635,6 +1636,28 @@
                     showToast('启动失败: ' + e.message, 'error');
                 }
             }
+        }
+
+        async function refreshPendingOrders() {
+            const btn = event.target;
+            btn.textContent = '刷新中...';
+            btn.disabled = true;
+            try {
+                const res = await fetch(API_BASE + '/api/auto/refresh_pending', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await res.json();
+                if (data.code === 0) {
+                    showToast('挂单已刷新', 'success');
+                } else {
+                    showToast('刷新失败: ' + (data.msg || ''), 'error');
+                }
+            } catch (e) {
+                showToast('刷新失败: ' + e.message, 'error');
+            }
+            btn.textContent = '手动刷新挂单';
+            btn.disabled = false;
         }
 
         async function togglePendingOrderMode() {
