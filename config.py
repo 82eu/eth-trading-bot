@@ -36,6 +36,7 @@ def is_valid_swap_symbol(symbol):
         return False
     if parts[1] != "USDT" or parts[2] != "SWAP":
         return False
+    # 币种名称部分必须是大写字母，1-20个字符
     base = parts[0]
     if not base or len(base) > 20 or not base.isalpha():
         return False

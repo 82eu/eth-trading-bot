@@ -68,11 +68,11 @@ class KlineService:
                 else:
                     candles = self._fetch_gate(symbol, tf, limit)
 
-                if candles and len(candles) >= 50:
+                if candles and len(candles) >= 260:
                     logger.debug(f"K线来源: {src}, {tf}, {len(candles)}根")
                     return candles, src
                 else:
-                    logger.warning(f"{src} K线数据不足: {len(candles) if candles else 0}根")
+                    logger.warning(f"{src} K线数据不足: {len(candles) if candles else 0}根 (需要至少260根)")
             except Exception as e:
                 logger.warning(f"{src} 获取K线失败: {e}")
 
@@ -130,7 +130,7 @@ class KlineService:
         """OKX K线"""
         sym = self._get_symbol("okx", symbol)
         bar = self._get_tf("okx", tf)
-        url = f"{self.base_urls['okx']}/api/v5/market/history-candles"
+        url = f"{self.base_urls['okx']}/api/v5/market/candles"
 
         all_data = []
         remaining = limit

@@ -26,66 +26,23 @@ class EMAStrategy:
         if len(prices) < period:
             return None
         multiplier = 2 / (period + 1)
-        ema = sum(prices[:period]) / period  # 初始SMA
+        ema = sum(prices[:period]) / period
         for price in prices[period:]:
             ema = (price - ema) * multiplier + ema
         return ema
 
-    def _compute_ema_list(self, prices, period):
-        if len(prices) < period:
-            return None
-        multiplier = 2 / (period + 1)
-        ema_list = []
-        prev_ema = sum(prices[:period]) / period
-        for i, price in enumerate(prices):
-            if i < period:
-                ema_list.append(None)
-            else:
-                cur = (price - prev_ema) * multiplier + prev_ema
-                ema_list.append(cur)
-                prev_ema = cur
-        return ema_list
-
-    def _detect_entanglement(self, ema_fast_list, ema_slow_list):
-        crosses = 0
-        min_interval = 999999
-        last_cross_idx = -1
-        recent_crosses = 0
-        start_idx = max(0, len(ema_fast_list) - 100)
-        for i in range(1, len(ema_fast_list)):
-            if ema_fast_list[i] is None or ema_fast_list[i-1] is None:
-                continue
-            if ema_slow_list[i] is None or ema_slow_list[i-1] is None:
-                continue
-            prev_diff = ema_fast_list[i-1] - ema_slow_list[i-1]
-            cur_diff = ema_fast_list[i] - ema_slow_list[i]
-            if prev_diff * cur_diff < 0:
-                crosses += 1
-                if last_cross_idx >= 0:
-                    interval = i - last_cross_idx
-                    if interval < min_interval:
-                        min_interval = interval
-                last_cross_idx = i
-                if i >= start_idx:
-                    recent_crosses += 1
-        is_entangled = (crosses >= 3 and min_interval <= 30) or (recent_crosses >= 3)
-        return is_entangled, crosses, min_interval, recent_crosses
-
     def analyze_tf(self, candles, timeframe):
         """
-        分析单个周期（含纠缠判断）
+        分析单个周期
+        :param candles: K线数组 [[ts, open, high, low, close, vol], ...]
+        :param timeframe: 周期
+        :return: 分析结果字典
         """
         closes = [float(c[4]) for c in candles]
         current_price = closes[-1]
 
-        ema180_list = self._compute_ema_list(closes, self.ema_fast)
-        ema250_list = self._compute_ema_list(closes, self.ema_slow)
-
-        if ema180_list is None or ema250_list is None:
-            return None
-
-        ema180 = ema180_list[-1]
-        ema250 = ema250_list[-1]
+        ema180 = self.calculate_ema(closes, self.ema_fast)
+        ema250 = self.calculate_ema(closes, self.ema_slow)
 
         if ema180 is None or ema250 is None:
             return None
@@ -99,20 +56,49 @@ class EMAStrategy:
         in_zone = ema_low <= current_price <= ema_high
 
         if ema180 > ema250:
-            arrangement = "long"
+            trend = "long"
         else:
-            arrangement = "short"
+            trend = "short"
 
         is_ranging = zone_width_pct < self.zone_width_threshold_pct
 
-        is_entangled, cross_count, min_interval, recent_crosses = self._detect_entanglement(ema180_list, ema250_list)
+        ema180_history = []
+        ema250_history = []
+        for i in range(len(closes)):
+            e180 = self.calculate_ema(closes[:i+1], self.ema_fast)
+            e250 = self.calculate_ema(closes[:i+1], self.ema_slow)
+            if e180 and e250:
+                ema180_history.append(e180)
+                ema250_history.append(e250)
 
-        if current_price > ema_high:
-            trend = "long"
-        elif current_price < ema_low:
-            trend = "short"
-        else:
-            trend = arrangement
+        crossing_count = 0
+        min_cross_distance = float('inf')
+        last_cross_idx = -1
+        for i in range(1, len(ema180_history)):
+            prev_diff = ema180_history[i-1] - ema250_history[i-1]
+            curr_diff = ema180_history[i] - ema250_history[i]
+            if prev_diff * curr_diff < 0:
+                crossing_count += 1
+                if last_cross_idx >= 0:
+                    distance = i - last_cross_idx
+                    if distance < min_cross_distance:
+                        min_cross_distance = distance
+                last_cross_idx = i
+
+        lookback_periods = min(100, len(ema180_history))
+        recent_crosses = 0
+        if len(ema180_history) >= lookback_periods:
+            for i in range(len(ema180_history) - lookback_periods, len(ema180_history) - 1):
+                prev_diff = ema180_history[i] - ema250_history[i]
+                curr_diff = ema180_history[i+1] - ema250_history[i+1]
+                if prev_diff * curr_diff < 0:
+                    recent_crosses += 1
+
+        is_entangled = False
+        if crossing_count >= 3 and min_cross_distance <= 30:
+            is_entangled = True
+        elif recent_crosses >= 3:
+            is_entangled = True
 
         return {
             "tf": timeframe,
@@ -121,7 +107,6 @@ class EMAStrategy:
             "current_price": current_price,
             "in_zone": in_zone,
             "trend": trend,
-            "arrangement": arrangement,
             "ema_high": ema_high,
             "ema_low": ema_low,
             "center_price": center,
@@ -129,78 +114,111 @@ class EMAStrategy:
             "zone_width_pct": zone_width_pct,
             "is_ranging": is_ranging,
             "is_entangled": is_entangled,
-            "cross_count": cross_count,
-            "min_interval": min_interval,
+            "crossing_count": crossing_count,
             "recent_crosses": recent_crosses,
         }
 
     def get_trend_direction(self, analysis_map, timeframe):
         """
-        获取趋势方向（EMA纠缠时递推到大周期）
-        从起始周期开始，若当前周期EMA纠缠（交叉太近）则向上递推
-        直到找到非纠缠周期，以其趋势为准
-        5分钟周期优先用价格位置判断，不递推
+        获取趋势方向：
+        1. 价格在EMA区间上方 → 趋势=long（回踩做多）
+        2. 价格在EMA区间下方 → 趋势=short（反弹做空）
+        3. 价格在区间内且线纠缠 → 递推到大周期
+        4. 价格在区间内但线不纠缠 → 用当前周期EMA排列方向
+        :param analysis_map: {tf: analysis_result}
+        :param timeframe: 起始周期
+        :return: 'long' / 'short' / 'neutral'
         """
         tf_order = self.TIMEFRAMES
         if timeframe not in tf_order:
             return "neutral"
         idx = tf_order.index(timeframe)
 
-        for i in range(idx, len(tf_order)):
-            tf = tf_order[i]
-            if tf in analysis_map and analysis_map[tf]:
-                a = analysis_map[tf]
-                if not a.get("is_entangled", False):
-                    return a["trend"]
+        current_tf = tf_order[idx]
+        if current_tf not in analysis_map or not analysis_map[current_tf]:
+            return "neutral"
 
-        if timeframe in analysis_map and analysis_map[timeframe]:
-            return analysis_map[timeframe]["trend"]
-        return "neutral"
+        a = analysis_map[current_tf]
+        price = a["current_price"]
+        ema_high = a["ema_high"]
+        ema_low = a["ema_low"]
+
+        if price > ema_high:
+            return "long"
+        elif price < ema_low:
+            return "short"
+        else:
+            for i in range(idx, len(tf_order)):
+                tf = tf_order[i]
+                if tf in analysis_map and analysis_map[tf]:
+                    ai = analysis_map[tf]
+                    if not ai.get("is_entangled", False):
+                        return ai["trend"]
+
+            return a["trend"]
+
+    def get_entry_side(self, analysis, direction):
+        """
+        获取入场方向对应的EMA线
+        - 做多：从上方回踩，入口=ema_high（较高的线），出口=ema_low（较低的线）
+        - 做空：从下方反弹，入口=ema_low（较低的线），出口=ema_high（较高的线）
+        :param analysis: 单周期分析结果
+        :param direction: 'long' / 'short'
+        :return: (entry_ema, exit_ema) 入口EMA价、出口EMA价
+        """
+        ema_high = analysis["ema_high"]
+        ema_low = analysis["ema_low"]
+
+        if direction == "long":
+            return ema_high, ema_low
+        else:
+            return ema_low, ema_high
 
     def calc_entry_levels(self, analysis, direction, num_entries=1):
         """
         计算分批建仓点位
-        固定以EMA180（快线）为入口，EMA250（慢线）为出口
         :param analysis: 单周期分析结果
         :param direction: 'long' / 'short'
         :param num_entries: 1/2/3 份
         :return: [{'index': 1, 'price': float, 'description': '...'}, ...]
         """
-        ema180 = analysis["ema180"]
-        ema250 = analysis["ema250"]
-        center = (ema180 + ema250) / 2
+        ema_high = analysis["ema_high"]
+        ema_low = analysis["ema_low"]
+        center = (ema_high + ema_low) / 2
+        entry_line, exit_line = self.get_entry_side(analysis, direction)
 
         entries = []
         if num_entries == 1:
-            entries.append({"index": 1, "price": ema180, "description": "入口EMA(EMA180)"})
+            entries.append({"index": 1, "price": entry_line, "description": "入口EMA"})
         elif num_entries == 2:
-            entries.append({"index": 1, "price": ema180, "description": "入口EMA(EMA180)"})
+            entries.append({"index": 1, "price": entry_line, "description": "入口EMA"})
             entries.append({"index": 2, "price": center, "description": "中心线"})
         elif num_entries == 3:
-            entries.append({"index": 1, "price": ema180, "description": "入口EMA(EMA180)"})
+            entries.append({"index": 1, "price": entry_line, "description": "入口EMA"})
             entries.append({"index": 2, "price": center, "description": "中心线"})
-            entries.append({"index": 3, "price": ema250, "description": "出口EMA(EMA250)"})
+            entries.append({"index": 3, "price": exit_line, "description": "出口EMA"})
 
         return entries
 
     def calc_stop_loss(self, analysis, direction, sl_points, current_entry_price=None):
         """
         计算止损价
-        逻辑：以EMA250（慢线）为基准，加上固定止损点数
-        - 做多：止损 = EMA250 - 止损点数
-        - 做空：止损 = EMA250 + 止损点数
+        逻辑：以离价格最远的EMA线为基准，加上固定止损点数
+        - 做多：止损 = ema_low - 止损点数
+        - 做空：止损 = ema_high + 止损点数
         :param analysis: 单周期分析结果
         :param direction: 'long' / 'short'
         :param sl_points: 止损点数（价格点数）
         :param current_entry_price: 当前入场价（None用现价）
         :return: 止损价
         """
-        ema250 = analysis["ema250"]
+        ema_high = analysis["ema_high"]
+        ema_low = analysis["ema_low"]
 
         if direction == "long":
-            stop_loss = ema250 - sl_points
+            stop_loss = ema_low - sl_points
         else:
-            stop_loss = ema250 + sl_points
+            stop_loss = ema_high + sl_points
 
         return stop_loss
 
