@@ -716,7 +716,7 @@ def auto_status():
             "data": {
                 "running": False,
                 "config": {
-                    "enabled_tfs": ["5m", "15m"],
+                    "enabled_tfs": {"ETH-USDT-SWAP": ["5m", "15m"], "BTC-USDT-SWAP": ["5m", "15m"]},
                     "total_amount_usdt": {"ETH-USDT-SWAP": 100, "BTC-USDT-SWAP": 100},
                     "num_entries": {"ETH-USDT-SWAP": 2, "BTC-USDT-SWAP": 2},
                     "tp_points": {"ETH-USDT-SWAP": 50, "BTC-USDT-SWAP": 500},
@@ -794,6 +794,44 @@ def auto_test():
         return jsonify({"code": 1, "msg": str(e)}), 500
 
 
+@app.route("/api/auto/test_current_price", methods=["POST"])
+def auto_test_current_price():
+    """
+    现价直接开单测试（不依赖EMA区间，直接市价开单，用于验证开单链路）
+    body: {
+        "symbol": "ETH-USDT-SWAP",
+        "direction": "long" | "short",
+        "amount_usdt": 50  // 可选，不传则用配置的分批金额
+    }
+    """
+    at = get_auto_trader()
+    if at is None:
+        return jsonify({"code": 1, "msg": "未初始化"}), 400
+
+    data = request.json or {}
+    
+    symbol = data.get("symbol") or trading_status.get("current_symbol", DEFAULT_SYMBOL)
+    symbol = normalize_symbol(symbol)
+    
+    if not is_valid_swap_symbol(symbol):
+        return jsonify({"code": 1, "msg": f"不支持的币种格式: {symbol}，需为 XXX-USDT-SWAP"}), 400
+    
+    direction = data.get("direction", "long")
+    amount_usdt = data.get("amount_usdt")
+    if amount_usdt is not None:
+        amount_usdt = float(amount_usdt)
+
+    try:
+        success, result = at.test_open_current_price(symbol, direction, amount_usdt)
+        if success:
+            return jsonify({"code": 0, "msg": "测试开单成功", "data": result})
+        else:
+            return jsonify({"code": 1, "msg": result if isinstance(result, str) else "测试开单失败"}), 400
+    except Exception as e:
+        logger.error(f"现价测试开单异常: {e}")
+        return jsonify({"code": 1, "msg": str(e)}), 500
+
+
 @app.route("/api/auto/config", methods=["POST"])
 def auto_config():
     """更新自动交易配置"""
@@ -803,7 +841,11 @@ def auto_config():
 
     config = {}
     if "enabled_tfs" in data:
-        config["enabled_tfs"] = data["enabled_tfs"]
+        val = data["enabled_tfs"]
+        if isinstance(val, dict):
+            config["enabled_tfs"] = {normalize_symbol(k): v for k, v in val.items()}
+        else:
+            config["enabled_tfs"] = val
     if "total_amount_usdt" in data:
         val = data["total_amount_usdt"]
         if isinstance(val, dict):
@@ -838,6 +880,8 @@ def auto_config():
         config["leverage"] = int(data["leverage"])
     if "feishu_enabled" in data:
         config["feishu_enabled"] = bool(data["feishu_enabled"])
+    if "pending_order_mode" in data:
+        config["pending_order_mode"] = bool(data["pending_order_mode"])
     
     # 处理enabled_symbols参数
     if "enabled_symbols" in data:

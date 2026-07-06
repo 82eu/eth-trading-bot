@@ -494,3 +494,77 @@ class OKXClient:
         except Exception as e:
             logger.error(f"获取条件单异常: {e}")
             return {"code": "-1", "msg": str(e)}
+
+    def get_pending_orders(self, symbol):
+        """获取所有待成交的限价挂单"""
+        try:
+            inst_id = self._normalize_symbol(symbol)
+            query = f"instId={inst_id}&ordType=limit"
+            headers = self._get_auth_headers("GET", "/api/v5/trade/orders-pending", query)
+            resp = requests.get(
+                f"{self.base_url}/api/v5/trade/orders-pending?{query}",
+                headers=headers, timeout=10
+            )
+            result = resp.json()
+            if result.get("code") == "0":
+                orders = result.get("data", [])
+                logger.info(f"待成交挂单[{inst_id}]: {len(orders)}个")
+                return orders
+            else:
+                logger.error(f"获取挂单失败: {result}")
+                return []
+        except Exception as e:
+            logger.error(f"获取挂单异常: {e}")
+            return []
+
+    def cancel_all_pending_orders(self, symbol):
+        """取消该币种所有待成交的限价挂单"""
+        orders = self.get_pending_orders(symbol)
+        if not orders:
+            return True
+        
+        inst_id = self._normalize_symbol(symbol)
+        cancelled = 0
+        failed = 0
+        
+        for order in orders:
+            order_id = order.get("ordId")
+            try:
+                body = json.dumps({
+                    "instId": inst_id,
+                    "ordId": order_id
+                }, separators=(',', ':'))
+                headers = self._get_auth_headers("POST", "/api/v5/trade/cancel-order", body)
+                resp = requests.post(
+                    f"{self.base_url}/api/v5/trade/cancel-order",
+                    data=body, headers=headers, timeout=10
+                )
+                result = resp.json()
+                if result.get("code") == "0":
+                    cancelled += 1
+                else:
+                    failed += 1
+                    logger.warning(f"撤单失败[{order_id}]: {result}")
+            except Exception as e:
+                failed += 1
+                logger.error(f"撤单异常[{order_id}]: {e}")
+        
+        logger.info(f"批量撤单[{inst_id}]: 成功{cancelled}个, 失败{failed}个")
+        return failed == 0
+
+    def place_limit_order_with_tpsl(self, symbol, side, usdt_amount, limit_price, pos_side, 
+                                     stop_loss=None, take_profit=None, leverage=None):
+        """挂限价单（带止盈止损）"""
+        ticker = self.get_ticker(symbol)
+        if not ticker:
+            self.last_error = "无法获取行情"
+            return None
+        
+        lev = leverage if leverage else LEVERAGE
+        size = self.usdt_to_size(symbol, usdt_amount, limit_price, lev)
+        if size is None or size <= 0:
+            return None
+        
+        order_id = self.place_order(symbol, side, size, "limit", limit_price, pos_side, lev,
+                                    stop_loss=stop_loss, take_profit=take_profit)
+        return order_id

@@ -40,6 +40,7 @@ class AutoTrader:
             "leverage": LEVERAGE,
             "feishu_enabled": True,
             "enabled_symbols": [DEFAULT_SYMBOL],
+            "pending_order_mode": False,  # 挂单模式开关
         }
 
         self.analysis_cache = {}
@@ -48,6 +49,8 @@ class AutoTrader:
         self.last_check_time = None
         self._buffer_state = {}
         self.buffer_width = 10
+        self._pending_orders = {}  # 跟踪已挂的限价单 {symbol: {order_id: info}}
+        self._last_pending_update = None  # 上次更新挂单的时间
         
         self.kline_services = {}
         for symbol in SUPPORTED_SYMBOLS:
@@ -146,16 +149,96 @@ class AutoTrader:
             "logs": self.signal_logs[-50:],
             "last_check": self.last_check_time.isoformat() if self.last_check_time else None,
             "buffer_state": self._buffer_state,
+            "pending_order_mode": self.config.get("pending_order_mode", False),
+            "last_pending_update": self._last_pending_update.isoformat() if self._last_pending_update else None,
         }
 
     def _run(self):
         while not self._stop_event.is_set():
             try:
-                self._check_once()
+                pending_mode = self.config.get("pending_order_mode", False)
+                if pending_mode:
+                    self._update_pending_orders()
+                    self._stop_event.wait(300)  # 挂单模式：5分钟更新一次
+                else:
+                    self._check_once()
+                    self._stop_event.wait(30)  # 实时模式：30秒检查一次
             except Exception as e:
                 logger.error(f"检查循环异常: {e}")
                 self._add_log(f"检查异常: {e}", "error")
-            self._stop_event.wait(30)
+                self._stop_event.wait(60)
+
+    def _update_pending_orders(self):
+        """挂单模式：每5分钟更新所有挂单"""
+        enabled_symbols = self.config.get("enabled_symbols", [DEFAULT_SYMBOL])
+        now = datetime.now()
+        
+        self._add_log(f"[挂单模式] 开始更新挂单 {now.strftime('%H:%M:%S')}", "info")
+        
+        for symbol in enabled_symbols:
+            if not is_valid_swap_symbol(symbol):
+                continue
+            
+            symbol_name = symbol.split("-")[0]
+            enabled_tfs = self._get_enabled_tfs(symbol)
+            
+            # 用第一个启用的周期来判断趋势和EMA位置
+            primary_tf = enabled_tfs[0] if enabled_tfs else "5m"
+            
+            candles = self._get_candles(symbol, primary_tf)
+            if not candles:
+                self._add_log(f"[挂单][{symbol_name}] 获取K线失败", "error")
+                continue
+            
+            analysis = self.strategy.analyze_tf(candles, primary_tf)
+            if not analysis:
+                self._add_log(f"[挂单][{symbol_name}] 分析失败", "error")
+                continue
+            
+            # 获取趋势方向
+            analysis_map = self.refresh_analysis(symbol)
+            trend = self.strategy.get_trend_direction(analysis_map, primary_tf)
+            if not trend or trend == "neutral":
+                self._add_log(f"[挂单][{symbol_name}] 趋势不明确，跳过", "info")
+                continue
+            
+            # 取消旧的挂单
+            cancelled = self.client.cancel_all_pending_orders(symbol)
+            if cancelled:
+                self._add_log(f"[挂单][{symbol_name}] 已取消旧挂单", "info")
+            
+            # 计算新的挂单位置
+            num_entries = self._get_num_entries(symbol)
+            total_amount = self._get_total_amount(symbol)
+            entry_amount = total_amount / num_entries
+            
+            entries = self.strategy.calc_entry_levels(analysis, trend, num_entries)
+            sl_price = self._calc_sl_with_big_tf_check(analysis_map, primary_tf, trend, self._get_sl_points(symbol))
+            leverage = self.config.get("leverage", LEVERAGE)
+            
+            # 挂新的限价单
+            side = "buy" if trend == "long" else "sell"
+            placed_count = 0
+            
+            for entry in entries:
+                entry_price = entry["price"]
+                tp_price = entry_price + self._get_tp_points(symbol) if trend == "long" else entry_price - self._get_tp_points(symbol)
+                
+                order_id = self.client.place_limit_order_with_tpsl(
+                    symbol, side, entry_amount, entry_price, trend,
+                    stop_loss=sl_price, take_profit=tp_price, leverage=leverage
+                )
+                
+                if order_id:
+                    placed_count += 1
+                    self._add_log(f"[挂单][{symbol_name}] {trend} {entry['description']} 挂单成功: {entry_amount}U @ {entry_price:.2f}, TP={tp_price:.2f}, SL={sl_price:.2f}", "success")
+                else:
+                    err = getattr(self.client, 'last_error', '')
+                    self._add_log(f"[挂单][{symbol_name}] {entry['description']} 挂单失败: {err}", "error")
+            
+            self._add_log(f"[挂单][{symbol_name}] 完成，成功挂单{placed_count}/{num_entries}个", "info")
+        
+        self._last_pending_update = now
 
     def _check_once(self):
         enabled_symbols = self.config.get("enabled_symbols", [DEFAULT_SYMBOL])
@@ -257,20 +340,8 @@ class AutoTrader:
             else:
                 return
 
-        in_zone = analysis.get("in_zone", False)
-        if not in_zone:
-            position_key_prefix = f"{symbol}_{tf}_"
-            keys_to_remove = [k for k in self.opened_positions if k.startswith(position_key_prefix)]
-            for k in keys_to_remove:
-                del self.opened_positions[k]
-            return
-
         trend = self.strategy.get_trend_direction(analysis_map, tf)
         if not trend or trend == "neutral":
-            return
-
-        position_key = f"{symbol}_{tf}_{trend}"
-        if position_key in self.opened_positions:
             return
 
         num_entries = self._get_num_entries(symbol)
@@ -309,8 +380,11 @@ class AutoTrader:
         )
 
         if order_id:
+            position_key = f"{symbol}_{tf}_{trend}_{entry_index}_{int(time.time())}"
             self.opened_positions[position_key] = {
                 "symbol": symbol,
+                "tf": tf,
+                "direction": trend,
                 "entry_index": entry_index,
                 "price": current_price,
                 "time": datetime.now().isoformat(),
@@ -416,6 +490,83 @@ class AutoTrader:
             else:
                 msg = "开单失败（交易所返回错误，请查看日志）"
             self._add_log(f"[测试][{symbol_name}][{timeframe}] {msg}", "error")
+            return False, msg
+
+    def test_open_current_price(self, symbol, direction="long", amount_usdt=None):
+        """现价直接开单测试（不依赖EMA区间，直接市价开单，用于验证开单链路）"""
+        symbol_name = symbol.split("-")[0]
+        try:
+            ticker = self.client.get_ticker(symbol)
+            if not ticker:
+                msg = "获取行情失败"
+                self._add_log(f"[测试][{symbol_name}] {msg}", "error")
+                return False, msg
+            current_price = float(ticker["last"])
+        except Exception as e:
+            msg = f"获取行情异常: {e}"
+            self._add_log(f"[测试][{symbol_name}] {msg}", "error")
+            return False, msg
+
+        if amount_usdt is None:
+            amount_usdt = self._get_total_amount(symbol) / max(self._get_num_entries(symbol), 1)
+
+        leverage = self.config.get("leverage", 10)
+        tp_points = self._get_tp_points(symbol)
+        sl_points = self._get_sl_points(symbol)
+
+        if direction == "long":
+            tp_price = current_price + tp_points
+            sl_price = current_price - sl_points
+        else:
+            tp_price = current_price - tp_points
+            sl_price = current_price + sl_points
+
+        side = "buy" if direction == "long" else "sell"
+        logger.info(f"[测试][{symbol_name}] 现价开{direction}, 金额{amount_usdt}U, 杠杆{leverage}x, 价格{current_price:.2f}, 止损{sl_price:.2f}, 止盈{tp_price:.2f}")
+        self._add_log(f"[测试][{symbol_name}] 现价开{direction}, 金额{amount_usdt}U, 价格{current_price:.2f}, 止损{sl_price:.2f}, 止盈{tp_price:.2f}", "signal")
+
+        try:
+            order_id = self.client.place_order_usdt(
+                symbol, side, amount_usdt,
+                pos_side=direction,
+                stop_loss=sl_price,
+                take_profit=tp_price,
+                leverage=leverage,
+            )
+        except Exception as e:
+            msg = f"下单异常: {e}"
+            logger.error(f"[测试][{symbol_name}] {msg}")
+            self._add_log(f"[测试][{symbol_name}] {msg}", "error")
+            return False, msg
+
+        if order_id:
+            self._add_log(f"[测试][{symbol_name}] 开{direction}成功 {amount_usdt}U @ {current_price:.2f}", "success")
+            return True, {
+                "symbol": symbol,
+                "direction": direction,
+                "amount": amount_usdt,
+                "price": current_price,
+                "stop_loss": sl_price,
+                "take_profit": tp_price,
+                "order_id": order_id,
+            }
+        else:
+            err = getattr(self.client, 'last_error', '')
+            balance = self.client.get_balance()
+            avail_eq = 0
+            if balance:
+                for item in balance:
+                    for d in item.get("details", []):
+                        if d.get("ccy") == "USDT":
+                            avail_eq = float(d.get("availEq", "0"))
+            margin_needed = amount_usdt / leverage
+            if avail_eq > 0 and avail_eq < margin_needed:
+                msg = f"余额不足: 可用 {avail_eq:.2f} USDT, 需要保证金 {margin_needed:.2f} USDT ({amount_usdt:.2f}U合约价值 × {leverage}x杠杆)"
+            elif err:
+                msg = f"开单失败: {err}"
+            else:
+                msg = "开单失败（交易所返回错误，请查看日志）"
+            self._add_log(f"[测试][{symbol_name}] {msg}", "error")
             return False, msg
 
     def _add_log(self, msg, level="info"):
