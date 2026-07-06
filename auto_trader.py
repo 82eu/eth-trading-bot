@@ -224,6 +224,20 @@ class AutoTrader:
                 
                 for entry in entries:
                     entry_price = entry["price"]
+                    
+                    if trend == "long":
+                        if entry_price >= current_price:
+                            tf_skipped += 1
+                            total_skipped += 1
+                            self._add_log(f"[挂单][{symbol_name}][{tf}] {entry['description']} 跳过: 多单入场价{entry_price:.2f}高于现价{current_price:.2f}，挂了会立即成交", "info")
+                            continue
+                    else:
+                        if entry_price <= current_price:
+                            tf_skipped += 1
+                            total_skipped += 1
+                            self._add_log(f"[挂单][{symbol_name}][{tf}] {entry['description']} 跳过: 空单入场价{entry_price:.2f}低于现价{current_price:.2f}，挂了会立即成交", "info")
+                            continue
+                    
                     tp_price = entry_price + self._get_tp_points(symbol) if trend == "long" else entry_price - self._get_tp_points(symbol)
                     
                     order_id = self.client.place_limit_order_with_tpsl(
