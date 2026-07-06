@@ -1,0 +1,240 @@
+.symbol-configs-section {
+    margin-bottom: 16px;
+}
+
+.symbol-configs-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    color: #e7e9ea;
+}
+
+.symbol-configs-title > span {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* 添加币种输入栏 */
+.add-symbol-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.add-symbol-input {
+    background: #0f1419;
+    border: 1px solid #2d3748;
+    border-radius: 6px;
+    padding: 5px 10px;
+    color: #e7e9ea;
+    font-size: 12px;
+    width: 110px;
+    text-transform: uppercase;
+}
+
+.add-symbol-input:focus {
+    outline: none;
+    border-color: #627eea;
+}
+
+.add-symbol-input::placeholder {
+    text-transform: none;
+    color: #4a5568;
+}
+
+.btn-add-symbol {
+    background: #627eea;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.2s;
+}
+
+.btn-add-symbol:hover {
+    background: #4c6ef5;
+}
+
+.symbol-config-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 12px;
+}
+
+.symbol-config-card {
+    background: #1a1f2e;
+    border: 1px solid #2d3748;
+    border-radius: 12px;
+    overflow: hidden;
+    transition: border-color 0.2s;
+}
+
+.symbol-config-card:hover {
+    border-color: #627eea;
+}
+
+.symbol-config-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px;
+    background: rgba(99, 102, 241, 0.08);
+    border-bottom: 1px solid #2d3748;
+}
+
+.symbol-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: #a78bfa;
+}
+
+.symbol-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.symbol-enable-check {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: #a0aec0;
+    cursor: pointer;
+}
+
+.symbol-enable-check input {
+    margin: 0;
+    accent-color: #627eea;
+    width: 14px;
+    height: 14px;
+}
+
+/* 删除币种按钮 */
+.symbol-remove-btn {
+    background: none;
+    border: none;
+    color: #718096;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+    transition: color 0.2s;
+}
+
+.symbol-remove-btn:hover {
+    color: #ef4444;
+}
+
+.symbol-config-body {
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.symbol-config-body .config-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.symbol-config-body .config-row label {
+    font-size: 12px;
+    color: #718096;
+    min-width: 60px;
+    flex-shrink: 0;
+}
+
+.symbol-config-body .cfg-input {
+    flex: 1;
+    background: #0f1419;
+    border: 1px solid #2d3748;
+    border-radius: 6px;
+    padding: 6px 8px;
+    color: #e7e9ea;
+    font-size: 12px;
+    text-align: right;
+}
+
+.symbol-config-body .cfg-input:focus {
+    outline: none;
+    border-color: #627eea;
+}
+
+.symbol-config-body .unit {
+    color: #718096;
+    font-size: 11px;
+    min-width: 18px;
+}
+
+.entry-btns-mini {
+    display: flex;
+    gap: 4px;
+    flex: 1;
+}
+
+.entry-btn-mini {
+    flex: 1;
+    padding: 5px;
+    background: #2d3748;
+    border: none;
+    border-radius: 6px;
+    color: #a0aec0;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.entry-btn-mini:hover {
+    background: #4a5568;
+    color: #e7e9ea;
+}
+
+.entry-btn-mini.active {
+    background: #627eea;
+    color: white;
+}
+
+/* 周期复选框组 */
+.tf-checks-mini {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    flex: 1;
+}
+
+.tf-check-mini {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 11px;
+    color: #a0aec0;
+    cursor: pointer;
+    padding: 2px 6px;
+    background: #2d3748;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.tf-check-mini:hover {
+    background: #4a5568;
+}
+
+.tf-check-mini input {
+    margin: 0;
+    accent-color: #627eea;
+    width: 12px;
+    height: 12px;
+}
