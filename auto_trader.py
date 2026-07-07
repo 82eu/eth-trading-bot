@@ -192,7 +192,9 @@ class AutoTrader:
             
             symbol_name = symbol.split("-")[0]
             enabled_tfs = self._get_enabled_tfs(symbol)
-            self._add_log(f"[挂单][{symbol_name}] 启用周期: {enabled_tfs}", "info")
+            if not enabled_tfs:
+                self._add_log(f"[挂单][{symbol_name}] 未启用任何周期", "info")
+                continue
             
             ticker = self.client.get_ticker(symbol)
             if not ticker:
@@ -202,11 +204,6 @@ class AutoTrader:
             
             analysis_map = self.refresh_analysis(symbol)
             
-            # 先取消所有旧挂单
-            cancelled = self.client.cancel_all_pending_orders(symbol)
-            if cancelled:
-                self._add_log(f"[挂单][{symbol_name}] 已取消旧挂单", "info")
-            
             num_entries = self._get_num_entries(symbol)
             total_amount = self._get_total_amount(symbol)
             entry_amount = total_amount / num_entries
@@ -215,7 +212,9 @@ class AutoTrader:
             total_placed = 0
             total_skipped = 0
             
-            # 每个启用的周期都挂单
+            self._add_log(f"[挂单][{symbol_name}] 总金额: {total_amount}U, 每份金额: {entry_amount:.2f}U, 份数: {num_entries}", "info")
+            
+            # 每个启用的周期独立挂单
             for tf in enabled_tfs:
                 analysis = analysis_map.get(tf)
                 if not analysis:
@@ -235,14 +234,31 @@ class AutoTrader:
                 entries = self.strategy.calc_entry_levels(analysis, trend, num_entries)
                 sl_price = self._calc_sl_with_big_tf_check(analysis_map, tf, trend, self._get_sl_points(symbol))
                 
+                # 检查当前周期是否已有持仓，计算还需要挂几份
+                positions = self.client.get_position(symbol)
+                filled_count = 0
+                if positions:
+                    for pos in positions:
+                        if float(pos.get("pos", 0)) != 0:
+                            filled_count += 1
+                            break
+                
+                # 剩余需要挂的份数
+                remaining_entries = entries[filled_count:]
+                
                 entries_str = ", ".join([f"{e['description']}={e['price']:.2f}" for e in entries])
-                self._add_log(f"[挂单][{symbol_name}][{tf}] 入场位: {entries_str}", "info")
+                if filled_count > 0:
+                    remaining_str = ", ".join([f"{e['description']}={e['price']:.2f}" for e in remaining_entries])
+                    self._add_log(f"[挂单][{symbol_name}][{tf}] 入场位: {entries_str}, 已成交{filled_count}份, 待挂{len(remaining_entries)}份: {remaining_str}", "info")
+                else:
+                    self._add_log(f"[挂单][{symbol_name}][{tf}] 入场位: {entries_str}", "info")
                 
                 side = "buy" if trend == "long" else "sell"
                 tf_placed = 0
                 tf_skipped = 0
                 
-                for entry in entries:
+                # 只挂剩余份数
+                for entry in remaining_entries:
                     entry_price = entry["price"]
                     
                     if trend == "long":
@@ -279,7 +295,7 @@ class AutoTrader:
                             self._add_log(f"[挂单][{symbol_name}][{tf}] {entry['description']} 挂单失败: {err}", "error")
                 
                 if tf_placed > 0 or tf_skipped > 0:
-                    self._add_log(f"[挂单][{symbol_name}][{tf}] 完成，挂单{tf_placed}/{num_entries}个，跳过{tf_skipped}个", "info")
+                    self._add_log(f"[挂单][{symbol_name}][{tf}] 完成，挂单{tf_placed}/{len(remaining_entries)}个，跳过{tf_skipped}个", "info")
             
             self._add_log(f"[挂单][{symbol_name}] 全部周期完成，共挂单{total_placed}个，跳过{total_skipped}个", "info")
         
@@ -385,6 +401,20 @@ class AutoTrader:
     def _check_tf_signal(self, symbol, tf, analysis_map):
         analysis = analysis_map.get(tf)
         if not analysis:
+            return
+
+        # 检查当前是否已有持仓，有持仓则不再开单
+        positions = self.client.get_position(symbol)
+        has_position = False
+        if positions:
+            for pos in positions:
+                if float(pos.get("pos", 0)) != 0:
+                    has_position = True
+                    break
+        
+        if has_position:
+            symbol_name = symbol.split("-")[0]
+            self._add_log(f"[{symbol_name}][{tf}] 已有持仓，跳过开单", "info")
             return
 
         current_price = analysis["current_price"]
