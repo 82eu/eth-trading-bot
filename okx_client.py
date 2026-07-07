@@ -290,6 +290,25 @@ class OKXClient:
             if tick > 0:
                 return round(price / tick) * tick
         return price
+    
+    def _format_size(self, symbol, size):
+        """格式化合约张数，解决浮点数精度问题"""
+        inst = self.get_instruments(symbol)
+        if inst and "lotSz" in inst:
+            lot_sz = float(inst["lotSz"])
+        else:
+            if "BTC" in symbol:
+                lot_sz = 1
+            elif "ETH" in symbol:
+                lot_sz = 0.1
+            else:
+                lot_sz = 0.1
+        
+        if lot_sz >= 1:
+            return str(int(size))
+        else:
+            decimals = len(str(lot_sz).split(".")[1]) if "." in str(lot_sz) else 0
+            return str(round(size, decimals))
 
     def place_order(self, symbol, side, size, order_type="market", price=None, pos_side="long", leverage=None,
                     stop_loss=None, take_profit=None):
@@ -316,7 +335,7 @@ class OKXClient:
                 "tdMode": "cross",
                 "side": side,
                 "ordType": order_type,
-                "sz": str(size),
+                "sz": self._format_size(symbol, size),
                 "posSide": pos_side,
             }
             if order_type == "limit" and price:
